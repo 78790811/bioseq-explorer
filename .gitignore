@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+results/tables/
+results/plots/
+results/clean/
+results/REPORT.md

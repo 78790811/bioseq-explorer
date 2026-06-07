@@ -1,0 +1,6 @@
+>seq01_pka_good Poliklinika_A sekwencja_referencyjna
+ATGCATGCATGCATGCATGCATGCATGCAT
+>seq02_pka_krotka Poliklinika_A zbyt_krotki_fragment
+ATGC
+>seq03_pka_wiele_N Poliklinika_A fragment_z_ambiguousami
+NNNNNNNNTGCATGCATGCATGCATGCATGC
