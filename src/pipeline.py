@@ -1,68 +1,75 @@
+# pipeline.py
+# Orchestrator module for the HUBA data preparation pipeline.
+# Connects cleaner.py and integrator.py into a single callable step.
+# Called by main.py for each configuration variant.
+
 from __future__ import annotations
-import csv
 from pathlib import Path
-from src.stats import gc_content, n_content
+
+from src.cleaner import clean_records, cleaning_summary
+from src.integrator import save_clean_dataset, save_rejected
 
 
-def filter_sequences(records: list[dict], min_len: int, max_n_pct: float) -> tuple[list[dict], list[dict]]:
+# ---------------------------------------------------------------------------
+# Single variant pipeline run
+# ---------------------------------------------------------------------------
+
+def run_pipeline(
+    records: list[dict],
+    variant: str,
+    params: dict,
+    results_dir: Path,
+) -> dict:
+    """Run the full cleaning and integration pipeline for one variant.
+
+    Steps:
+        1. Clean records using variant parameters (cleaner.py)
+        2. Save accepted records to clean_dataset_{variant}.csv
+        3. Save rejected records to rejected_{variant}.csv
+        4. Return summary dict for reporting
+
+    Args:
+        records:     list of raw records from load_data.py
+        variant:     variant label, e.g. "A", "B" or "C"
+        params:      dict with keys: min_len, max_n_pct (from config.py)
+        results_dir: base results directory path
+
+    Returns:
+        dict with keys: variant, params, total, accepted, rejected
     """
-    Filtruje sekwencje według parametrów jakości.
-    Zwraca: (accepted, rejected)
-    """
-    accepted, rejected = [], []
+    print(f"\n  [Variant {variant}] "
+          f"min_len={params['min_len']}, "
+          f"max_n_pct={params['max_n_pct']}")
 
-    for r in records:
-        seq = r["sequence"]
+    # --- Step 1: clean records ---
+    accepted, rejected = clean_records(records, **params)
 
-        # TODO: Uzupełnij warunki odrzucenia sekwencji.
-        # Sekwencja powinna być odrzucona gdy:
-        #   1. jej długość jest MNIEJSZA niż min_len
-        #   2. LUB jej zawartość N (n_content) jest WIĘKSZA niż max_n_pct
-        #
-        # Funkcja n_content(seq) zwraca ułamek (0.0–1.0), np. 0.25 = 25% N
-        # Przykład sprawdzenia długości: len(seq) < min_len
-        #
-        # Jeśli warunek odrzucenia jest spełniony → dodaj do rejected z kluczem "reason"
-        # W przeciwnym razie → dodaj do accepted
+    # --- Step 2: save clean dataset ---
+    clean_path = (
+        results_dir / "tables" / f"clean_dataset_{variant}.csv"
+    )
+    save_clean_dataset(accepted, clean_path)
 
-        reject = False
-        reason = ""
+    # --- Step 3: save rejected records ---
+    rejected_path = (
+        results_dir / "tables" / f"rejected_{variant}.csv"
+    )
+    save_rejected(rejected, rejected_path)
 
-        # --- UZUPEŁNIJ PONIŻEJ ---
-        # Warunek 1: odrzuć jeśli sekwencja jest za krótka
-        #   if len(seq) < min_len:
-        #       reject = True
-        #       reason = f"TOO_SHORT (len={len(seq)}, min={min_len})"
-        #
-        # Warunek 2: odrzuć jeśli za dużo N  (użyj elif, żeby każda seq miała jeden powód)
-        #   elif n_content(seq) > max_n_pct:
-        #       reject = True
-        #       reason = f"HIGH_N (n_pct={n_content(seq):.0%}, max={max_n_pct:.0%})"
-        # --- KONIEC UZUPEŁNIENIA ---
+    # --- Step 4: build and print summary ---
+    summary = cleaning_summary(accepted, rejected)
+    print(f"    accepted: {summary['accepted']}/{summary['total_input']}")
+    print(f"    rejected: {summary['rejected']}/{summary['total_input']}")
 
-        if reject:
-            rejected.append({**r, "reason": reason})
-        else:
-            accepted.append(r)
+    # Print rejection reasons breakdown if any records were rejected
+    if summary["rejection_reasons"]:
+        for reason, count in summary["rejection_reasons"].items():
+            print(f"      - {reason}: {count}")
 
-    return accepted, rejected
-
-
-def save_param_compare(results_by_variant: dict, out_path: Path) -> None:
-    """Zapisuje tabelę porównawczą wyników dla obu wariantów."""
-    rows = []
-    for variant, data in results_by_variant.items():
-        rows.append({
-            "variant": variant,
-            "min_len": data["params"]["min_len"],
-            "max_n_pct": data["params"]["max_n_pct"],
-            "total_input": data["total"],
-            "accepted": data["accepted"],
-            "rejected": data["rejected"],
-            "accepted_pct": round(data["accepted"] / data["total"] * 100, 1) if data["total"] else 0,
-        })
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        w.writerows(rows)
+    return {
+        "variant": variant,
+        "params": params,
+        "total": summary["total_input"],
+        "accepted": summary["accepted"],
+        "rejected": summary["rejected"],
+    }
