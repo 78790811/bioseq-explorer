@@ -1,157 +1,265 @@
-"""
-Projekt A — Analiza sekwencji biologicznych (FASTA)
-Uruchomienie:  py main.py --variant A
-               py main.py --variant B
-               py main.py --all
-"""
+# main.py
+# Entry point for the HUBA data preparation pipeline.
+# Orchestrates loading, cleaning, integration and reporting.
+#
+# Usage:
+#   python main.py --variant A
+#   python main.py --variant B
+#   python main.py --variant C
+#   python main.py --all
+#   python main.py --dry-run
+
 from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Safety check: make sure the script is run from the correct directory
+# ---------------------------------------------------------------------------
+
 if not Path("config.py").exists():
-    print("BŁĄD: Uruchom skrypt z katalogu projekt_A_bio/")
-    print("  W PyCharm: File → Open → wybierz folder projekt_A_bio (nie warsztaty-projekty)")
+    print("ERROR: Run this script from the bioseq_explorer/ directory.")
+    print("  In PyCharm: File -> Open -> select bioseq_explorer folder")
     sys.exit(1)
 
+# Use non-interactive matplotlib backend — saves plots to files, no GUI window
 import matplotlib
-matplotlib.use("Agg")  # zapis do pliku, bez okna GUI
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import config
-from src.load_data import load_all_fastas
-from src.stats import compute_input_stats, save_csv
-from src.pipeline import filter_sequences, save_param_compare
+from src.load_data import load_all_files
+from src.stats import compute_input_stats, save_csv, save_param_compare
+from src.pipeline import run_pipeline
 
 
-def run_variant(variant: str, records: list[dict], results_dir: Path) -> dict:
-    params = config.VARIANTS[variant]
-    print(f"\n  [Wariant {variant}] min_len={params['min_len']}, max_n_pct={params['max_n_pct']}")
+# ---------------------------------------------------------------------------
+# Plot generator
+# ---------------------------------------------------------------------------
 
-    accepted, rejected = filter_sequences(records, **params)
+def make_plots(
+    records: list[dict],
+    results_by_variant: dict,
+    results_dir: Path,
+) -> None:
+    """Generate and save diagnostic plots for the pipeline run.
 
-    # Statystyki po filtrze
-    after_stats = compute_input_stats(accepted)
-    save_csv(after_stats, results_dir / "tables" / f"after_filter_{variant}.csv")
+    Plot 1: bar chart of input sequence lengths (before filtering)
+    Plot 2: stacked bar chart comparing accepted/rejected per variant
 
-    # Raport odrzuconych
-    reject_rows = [{"id": r["id"], "reason": r["reason"]} for r in rejected]
-    save_csv(reject_rows, results_dir / "tables" / f"rejected_{variant}.csv")
-
-    print(f"    accepted: {len(accepted)}/{len(records)}, rejected: {len(rejected)}")
-    return {
-        "params": params,
-        "total": len(records),
-        "accepted": len(accepted),
-        "rejected": len(rejected),
-    }
-
-
-def make_plots(records: list[dict], results_by_variant: dict, results_dir: Path) -> None:
+    Args:
+        records:             all raw records from load_data
+        results_by_variant:  summary dicts keyed by variant label
+        results_dir:         base results directory path
+    """
     plots_dir = results_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    # Wykres 1: rozkład długości sekwencji (wejście)
+    # --- Plot 1: distribution of input sequence lengths ---
     lengths = [len(r["sequence"]) for r in records]
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.bar(range(len(lengths)), sorted(lengths), color="steelblue")
-    ax.set_title("Długości sekwencji — dane wejściowe")
-    ax.set_xlabel("Sekwencja (posortowane)")
-    ax.set_ylabel("Długość (bp)")
+    ax.set_title("Input sequence lengths")
+    ax.set_xlabel("Sequence (sorted)")
+    ax.set_ylabel("Length (bp)")
+
+    # Add length value label above each bar
     for i, v in enumerate(sorted(lengths)):
         ax.text(i, v + 0.3, str(v), ha="center", fontsize=9)
+
     plt.tight_layout()
     fig.savefig(plots_dir / "input_lengths.png", dpi=100)
     plt.close(fig)
-    print("  Wykres: results/plots/input_lengths.png")
+    print("  Plot saved: results/plots/input_lengths.png")
 
-    # Wykres 2: porównanie wariantów (ile sekwencji przeszło filtr)
+    # --- Plot 2: accepted vs rejected per variant ---
     variants = list(results_by_variant.keys())
     accepted = [results_by_variant[v]["accepted"] for v in variants]
     rejected = [results_by_variant[v]["rejected"] for v in variants]
 
     fig, ax = plt.subplots(figsize=(6, 4))
     x = range(len(variants))
-    ax.bar(x, accepted, label="Przyjęte", color="steelblue")
-    ax.bar(x, rejected, bottom=accepted, label="Odrzucone", color="tomato")
+
+    # Stacked bar: accepted on bottom, rejected on top
+    ax.bar(x, accepted, label="Accepted", color="steelblue")
+    ax.bar(x, rejected, bottom=accepted, label="Rejected", color="tomato")
+
     ax.set_xticks(list(x))
-    ax.set_xticklabels([f"Wariant {v}" for v in variants])
-    ax.set_ylabel("Liczba sekwencji")
-    ax.set_title("Porównanie wariantów filtra")
+    ax.set_xticklabels([f"Variant {v}" for v in variants])
+    ax.set_ylabel("Number of sequences")
+    ax.set_title("Filter comparison by variant")
     ax.legend()
     plt.tight_layout()
     fig.savefig(plots_dir / "param_compare.png", dpi=100)
     plt.close(fig)
-    print("  Wykres: results/plots/param_compare.png")
+    print("  Plot saved: results/plots/param_compare.png")
 
+
+# ---------------------------------------------------------------------------
+# Report generator
+# ---------------------------------------------------------------------------
+
+def save_report(
+    file_profile: list[dict],
+    results_by_variant: dict,
+    results_dir: Path,
+) -> None:
+    """Generate a Markdown summary report of the pipeline run.
+
+    Args:
+        file_profile:        list of dicts describing each input file
+        results_by_variant:  summary dicts keyed by variant label
+        results_dir:         base results directory path
+    """
+    lines = [
+        "# HUBA — Data Preparation Report",
+        "",
+        f"Input directory: {config.SOURCE_DIR}",
+        f"Files loaded: {len(file_profile)}",
+        "",
+        "## Input files",
+        "",
+    ]
+
+    # List each input file with format and record count
+    for fp in file_profile:
+        lines.append(
+            f"- `{fp['file']}` "
+            f"({fp['format']}, {fp['n_records']} records)"
+        )
+
+    lines.append("")
+
+    # Summary section for each variant
+    for variant, data in results_by_variant.items():
+        lines += [
+            f"## Variant {variant} "
+            f"(min_len={data['params']['min_len']}, "
+            f"max_n_pct={data['params']['max_n_pct']})",
+            "",
+            f"- Accepted: {data['accepted']}/{data['total']}",
+            f"- Rejected: {data['rejected']}/{data['total']}",
+            "",
+        ]
+
+    # List all generated artefacts
+    lines += [
+        "## Artefacts",
+        "",
+        "- results/tables/file_profile.csv",
+        "- results/tables/input_stats.csv",
+        "- results/tables/clean_dataset_*.csv",
+        "- results/tables/rejected_*.csv",
+        "- results/tables/param_compare.csv",
+        "- results/plots/input_lengths.png",
+        "- results/plots/param_compare.png",
+    ]
+
+    report_path = results_dir / "REPORT.md"
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\n  Saved: {report_path}")
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pipeline analizy sekwencji FASTA")
-    parser.add_argument("--variant", choices=list(config.VARIANTS.keys()), help="Uruchom jeden wariant")  # dodaj nowy wariant w config.py
-    parser.add_argument("--all", action="store_true", help="Uruchom oba warianty")
-    parser.add_argument("--dry-run", action="store_true", help="Wczytaj dane i pokaż statystyki — bez filtrowania i zapisu")
+    """Parse command-line arguments and run the HUBA pipeline."""
+
+    # --- Argument parser ---
+    parser = argparse.ArgumentParser(
+        description="HUBA — data preparation pipeline for BioSeq Explorer"
+    )
+    parser.add_argument(
+        "--variant",
+        choices=list(config.VARIANTS.keys()),
+        help="Run a single variant (A, B or C)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Run all variants and generate comparison",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Load files and show stats — no filtering or saving",
+    )
     args = parser.parse_args()
 
+    # Print help if no argument was given
     if not args.variant and not args.all and not args.dry_run:
         parser.print_help()
         sys.exit(1)
 
+    # --- Create results directories ---
     results_dir = config.RESULTS_DIR
     results_dir.mkdir(parents=True, exist_ok=True)
     (results_dir / "tables").mkdir(exist_ok=True)
     (results_dir / "plots").mkdir(exist_ok=True)
 
-    # --- Krok 1: Wczytaj dane ---
-    print(f"\nWczytywanie plików z: {config.SOURCE_DIR}")
-    records, file_profile = load_all_fastas(config.SOURCE_DIR)
-    print(f"  Łącznie sekwencji: {len(records)}")
+    # --- Step 1: Load all input files ---
+    print(f"\nLoading files from: {config.SOURCE_DIR}")
+    records, file_profile = load_all_files(config.SOURCE_DIR)
+    print(f"  Total records loaded: {len(records)}")
 
+    # Save file profile summary
     save_csv(file_profile, results_dir / "tables" / "file_profile.csv")
-    print("  Zapisano: results/tables/file_profile.csv")
+    print("  Saved: results/tables/file_profile.csv")
 
+    # Dry-run stops here — no filtering or saving
     if args.dry_run:
-        print("\n[--dry-run] Zatrzymano przed filtrowaniem. Dane wczytane poprawnie.")
-        print(f"  Pliki: {len(file_profile)}, sekwencji łącznie: {len(records)}")
+        print("\n[--dry-run] Stopped before filtering. Data loaded OK.")
+        print(f"  Files: {len(file_profile)}, "
+              f"records: {len(records)}")
+        for fp in file_profile:
+            print(f"    {fp['file']} ({fp['format']}): "
+                  f"{fp['n_records']} records")
         return
 
-    # --- Krok 2: Statystyki wejścia ---
+    # --- Step 2: Compute and save input statistics ---
     input_stats = compute_input_stats(records)
     save_csv(input_stats, results_dir / "tables" / "input_stats.csv")
-    print("  Zapisano: results/tables/input_stats.csv")
+    print("  Saved: results/tables/input_stats.csv")
+
+    # Print per-sequence statistics to terminal
     for row in input_stats:
-        print(f"    {row['id']:20s}  len={row['length']:4d}  GC={row['gc_pct']:5.1f}%  N={row['n_pct']:5.1f}%")
+        print(
+            f"    {row['id']:20s}  "
+            f"len={row['length']:4d}  "
+            f"GC={row['gc_pct']:5.1f}%  "
+            f"N={row['n_pct']:5.1f}%"
+        )
 
-    # --- Krok 3: Uruchom wariant(y) ---
-    to_run = ["A", "B"] if args.all else [args.variant]
+    # --- Step 3: Run variant(s) ---
+    to_run = (
+        list(config.VARIANTS.keys()) if args.all
+        else [args.variant]
+    )
+
     results_by_variant = {}
-    for v in to_run:
-        results_by_variant[v] = run_variant(v, records, results_dir)
+    for variant in to_run:
+        results_by_variant[variant] = run_pipeline(
+            records, variant, config.VARIANTS[variant], results_dir
+        )
 
-    # --- Krok 4: Porównanie wariantów ---
+    # --- Step 4: Save variant comparison table ---
     if len(results_by_variant) > 1:
-        save_param_compare(results_by_variant, results_dir / "tables" / "param_compare.csv")
-        print("\n  Zapisano: results/tables/param_compare.csv")
+        save_param_compare(
+            results_by_variant,
+            results_dir / "tables" / "param_compare.csv",
+        )
+        print("\n  Saved: results/tables/param_compare.csv")
 
-    # --- Krok 5: Wykresy ---
+    # --- Step 5: Generate plots ---
     make_plots(records, results_by_variant, results_dir)
 
-    # --- Raport końcowy ---
-    report = results_dir / "REPORT.md"
-    lines = ["# REPORT — Projekt A: Sekwencje biologiczne", ""]
-    lines += [f"Katalog wejściowy: {config.SOURCE_DIR}",
-              f"Pliki FASTA: {len(file_profile)}", f"Sekwencji łącznie: {len(records)}", ""]
-    for v, d in results_by_variant.items():
-        lines.append(f"## Wariant {v}  (min_len={d['params']['min_len']}, max_n_pct={d['params']['max_n_pct']})")
-        lines.append(f"- Przyjęte: {d['accepted']}/{d['total']}")
-        lines.append(f"- Odrzucone: {d['rejected']}/{d['total']}")
-        lines.append("")
-    lines += ["## Artefakty", "- results/tables/file_profile.csv",
-              "- results/tables/input_stats.csv",
-              "- results/tables/after_filter_*.csv", "- results/tables/param_compare.csv",
-              "- results/plots/input_lengths.png", "- results/plots/param_compare.png"]
-    report.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\n  Zapisano: results/REPORT.md")
-    print("\nGotowe. Sprawdź katalog results/")
+    # --- Step 6: Save report ---
+    save_report(file_profile, results_by_variant, results_dir)
+
+    print("\nDone. Check the results/ directory.")
 
 
 if __name__ == "__main__":
