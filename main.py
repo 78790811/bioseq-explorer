@@ -58,19 +58,49 @@ def make_plots(
     plots_dir = results_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Plot 1: input sequence lengths (log scale) ---
-    lengths = [len(r["sequence"]) for r in records]
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(range(len(lengths)), sorted(lengths), color="steelblue")
+    # --- Plot 1: input sequence lengths (log scale, coloured by source) ---
+
+    # Build list of (length, source) pairs sorted by length
+    length_source = sorted(
+        [(len(r["sequence"]), r.get("_source", "unknown")) for r in records],
+        key=lambda x: x[0],
+    )
+    sorted_lengths = [ls[0] for ls in length_source]
+    sorted_sources = [ls[1] for ls in length_source]
+
+    # Assign a colour per source file
+    unique_sources = list(dict.fromkeys(sorted_sources))
+    color_map_bar = plt.cm.get_cmap("tab10", len(unique_sources))
+    source_to_color = {
+        src: color_map_bar(i) for i, src in enumerate(unique_sources)
+    }
+    bar_colors = [source_to_color[s] for s in sorted_sources]
+
+    # Shorten legend labels
+    short_legend = {
+        src: src.replace("_sequences.fasta", "").replace(".fasta", "")
+        for src in unique_sources
+    }
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.bar(range(len(sorted_lengths)), sorted_lengths, color=bar_colors)
 
     # Use logarithmic scale to handle large range of sequence lengths
     ax.set_yscale("log")
-    ax.set_title("Input sequence lengths (log scale)")
+    ax.set_title("Input sequence lengths (log scale, coloured by source)")
     ax.set_xlabel("Sequence index (sorted by length)")
     ax.set_ylabel("Length (bp, log scale)")
-
-    # Remove individual labels — too many sequences to label clearly
     ax.set_xticks([])
+
+    # Add legend for source files
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1,
+                      color=source_to_color[src],
+                      label=short_legend[src])
+        for src in unique_sources
+    ]
+    ax.legend(handles=legend_handles, bbox_to_anchor=(1.01, 1),
+              loc="upper left", fontsize=8)
 
     plt.tight_layout()
     fig.savefig(plots_dir / "input_lengths.png", dpi=100)
