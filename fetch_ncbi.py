@@ -25,11 +25,11 @@ OUTPUT_DIR = Path("source")
 # Genes to download — NCBI gene symbols for Homo sapiens
 # Each entry: (gene_symbol, ncbi_search_query)
 GENES = [
-    ("BRCA1", "BRCA1[Gene] AND Homo sapiens[Organism] AND mRNA[Filter]"),
-    ("BRCA2", "BRCA2[Gene] AND Homo sapiens[Organism] AND mRNA[Filter]"),
-    ("TP53",  "TP53[Gene]  AND Homo sapiens[Organism] AND mRNA[Filter]"),
-    ("CHEK2", "CHEK2[Gene] AND Homo sapiens[Organism] AND mRNA[Filter]"),
-    ("PALB2", "PALB2[Gene] AND Homo sapiens[Organism] AND mRNA[Filter]"),
+    ("BRCA1", "BRCA1 Homo sapiens mRNA"),
+    ("BRCA2", "BRCA2 Homo sapiens mRNA"),
+    ("TP53",  "TP53 Homo sapiens mRNA"),
+    ("CHEK2", "CHEK2 Homo sapiens mRNA"),
+    ("PALB2", "PALB2 Homo sapiens mRNA"),
 ]
 
 # Maximum number of sequences to download per gene
@@ -65,6 +65,7 @@ def fetch_gene_sequences(
         db="nucleotide",
         term=query,
         retmax=max_records,
+        usehistory="y",
     )
     search_results = Entrez.read(search_handle)
     search_handle.close()
