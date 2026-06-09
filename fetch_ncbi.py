@@ -48,6 +48,8 @@ def fetch_gene_sequences(
 ) -> int:
     """Search NCBI nucleotide database and download sequences as FASTA.
 
+    Skips download if the output file already exists.
+
     Args:
         gene_symbol: short gene name used for the output filename
         query:       NCBI Entrez search query string
@@ -55,8 +57,17 @@ def fetch_gene_sequences(
         max_records: maximum number of sequences to download
 
     Returns:
-        number of sequences successfully downloaded
+        number of sequences successfully downloaded, or 0 if skipped
     """
+    output_path = output_dir / f"{gene_symbol.lower()}_sequences.fasta"
+
+    # --- Skip download if file already exists ---
+    if output_path.exists():
+        print(f"\nSkipping {gene_symbol}: file already exists.")
+        print(f"  ({output_path})")
+        print(f"  To re-download, delete the file and run again.")
+        return 0
+
     print(f"\nSearching NCBI for: {gene_symbol}")
     print(f"  Query: {query}")
 
