@@ -386,20 +386,38 @@ def save_report(
             "",
         ]
 
-    # List all generated artefacts
-    lines += [
-        "## Artefacts",
-        "",
-        "- results/tables/file_profile.csv",
-        "- results/tables/input_stats.csv",
-        "- results/tables/clean_dataset_*.csv",
-        "- results/tables/rejected_*.csv",
-        "- results/tables/param_compare.csv",
-        "- results/plots/input_lengths.png",
-        "- results/plots/param_compare.png",
-        "- results/plots/gc_boxplot.png",
-        "- results/plots/gc_vs_length_scatter.png",
-    ]
+        # List only artefacts that were actually generated
+        artefacts = []
+
+        # Tables — always generated
+        artefacts += [
+            "- results/tables/file_profile.csv",
+            "- results/tables/input_stats.csv",
+        ]
+
+        # Variant-specific tables
+        for v in results_by_variant:
+            artefacts.append(f"- results/tables/clean_dataset_{v}.csv")
+            artefacts.append(f"- results/tables/after_filter_{v}.csv")
+
+        # Rejected files — only if any rejections occurred
+        for v, data in results_by_variant.items():
+            if data["rejected"] > 0:
+                artefacts.append(f"- results/tables/rejected_{v}.csv")
+
+        # Param compare — only if more than one variant was run
+        if len(results_by_variant) > 1:
+            artefacts.append("- results/tables/param_compare.csv")
+
+        # Plots — always generated
+        artefacts += [
+            "- results/plots/input_lengths.png",
+            "- results/plots/param_compare.png",
+            "- results/plots/gc_boxplot.png",
+            "- results/plots/gc_vs_length_scatter.png",
+        ]
+
+        lines += ["## Artefacts", ""] + artefacts
 
     report_path = results_dir / "REPORT.md"
     report_path.write_text("\n".join(lines), encoding="utf-8")
