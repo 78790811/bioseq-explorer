@@ -45,8 +45,10 @@ def make_plots(
 ) -> None:
     """Generate and save diagnostic plots for the pipeline run.
 
-    Plot 1: bar chart of input sequence lengths (before filtering)
+    Plot 1: bar chart of input sequence lengths (log scale)
     Plot 2: stacked bar chart comparing accepted/rejected per variant
+    Plot 3: boxplot of GC% distribution per source file
+    Plot 4: scatter plot of GC% vs sequence length
 
     Args:
         records:             all raw records from load_data
@@ -56,17 +58,19 @@ def make_plots(
     plots_dir = results_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Plot 1: distribution of input sequence lengths ---
+    # --- Plot 1: input sequence lengths (log scale) ---
     lengths = [len(r["sequence"]) for r in records]
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(10, 5))
     ax.bar(range(len(lengths)), sorted(lengths), color="steelblue")
-    ax.set_title("Input sequence lengths")
-    ax.set_xlabel("Sequence (sorted)")
-    ax.set_ylabel("Length (bp)")
 
-    # Add length value label above each bar
-    for i, v in enumerate(sorted(lengths)):
-        ax.text(i, v + 0.3, str(v), ha="center", fontsize=9)
+    # Use logarithmic scale to handle large range of sequence lengths
+    ax.set_yscale("log")
+    ax.set_title("Input sequence lengths (log scale)")
+    ax.set_xlabel("Sequence index (sorted by length)")
+    ax.set_ylabel("Length (bp, log scale)")
+
+    # Remove individual labels — too many sequences to label clearly
+    ax.set_xticks([])
 
     plt.tight_layout()
     fig.savefig(plots_dir / "input_lengths.png", dpi=100)
@@ -85,6 +89,14 @@ def make_plots(
     ax.bar(x, accepted, label="Accepted", color="steelblue")
     ax.bar(x, rejected, bottom=accepted, label="Rejected", color="tomato")
 
+    # Add count labels inside each bar segment
+    for i, (acc, rej) in enumerate(zip(accepted, rejected)):
+        ax.text(i, acc / 2, str(acc), ha="center", va="center",
+                color="white", fontsize=10, fontweight="bold")
+        if rej > 0:
+            ax.text(i, acc + rej / 2, str(rej), ha="center", va="center",
+                    color="white", fontsize=10, fontweight="bold")
+
     ax.set_xticks(list(x))
     ax.set_xticklabels([f"Variant {v}" for v in variants])
     ax.set_ylabel("Number of sequences")
@@ -94,6 +106,83 @@ def make_plots(
     fig.savefig(plots_dir / "param_compare.png", dpi=100)
     plt.close(fig)
     print("  Plot saved: results/plots/param_compare.png")
+
+    # --- Plot 3: GC% distribution per source file (boxplot) ---
+    # Group GC% values by source file
+    sources: dict[str, list[float]] = {}
+    for r in records:
+        src = r.get("_source", "unknown")
+        gc = (r["sequence"].count("G") + r["sequence"].count("C")) / len(
+            r["sequence"]
+        ) * 100 if r["sequence"] else 0.0
+        sources.setdefault(src, []).append(gc)
+
+    source_labels = list(sources.keys())
+    source_data = [sources[s] for s in source_labels]
+
+    # Shorten labels for readability (remove _sequences.fasta suffix)
+    short_labels = [
+        s.replace("_sequences.fasta", "").replace(".fasta", "")
+        for s in source_labels
+    ]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.boxplot(source_data, labels=short_labels, patch_artist=True,
+               boxprops=dict(facecolor="steelblue", alpha=0.6))
+    ax.set_title("GC% distribution per source file")
+    ax.set_xlabel("Source file")
+    ax.set_ylabel("GC content (%)")
+
+    # Rotate x labels to avoid overlap
+    plt.xticks(rotation=30, ha="right")
+    plt.tight_layout()
+    fig.savefig(plots_dir / "gc_boxplot.png", dpi=100)
+    plt.close(fig)
+    print("  Plot saved: results/plots/gc_boxplot.png")
+
+    # --- Plot 4: GC% vs sequence length (scatter plot) ---
+    gc_values = []
+    len_values = []
+    colors_scatter = []
+
+    # Assign a colour per source file for visual grouping
+    color_map = plt.cm.get_cmap("tab10", len(sources))
+    source_color = {
+        src: color_map(i) for i, src in enumerate(source_labels)
+    }
+
+    for r in records:
+        seq = r["sequence"]
+        if not seq:
+            continue
+        gc = (seq.count("G") + seq.count("C")) / len(seq) * 100
+        gc_values.append(gc)
+        len_values.append(len(seq))
+        colors_scatter.append(source_color[r.get("_source", "unknown")])
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.scatter(len_values, gc_values, c=colors_scatter, alpha=0.7,
+               edgecolors="grey", linewidths=0.5, s=60)
+
+    # Use log scale on x axis — sequence lengths span several orders of magnitude
+    ax.set_xscale("log")
+    ax.set_title("GC content vs sequence length")
+    ax.set_xlabel("Sequence length (bp, log scale)")
+    ax.set_ylabel("GC content (%)")
+
+    # Add legend for source files
+    handles = [
+        plt.Line2D([0], [0], marker="o", color="w",
+                   markerfacecolor=source_color[src], markersize=8,
+                   label=src.replace("_sequences.fasta", "").replace(".fasta", ""))
+        for src in source_labels
+    ]
+    ax.legend(handles=handles, bbox_to_anchor=(1.01, 1), loc="upper left",
+              fontsize=8)
+    plt.tight_layout()
+    fig.savefig(plots_dir / "gc_vs_length_scatter.png", dpi=100)
+    plt.close(fig)
+    print("  Plot saved: results/plots/gc_vs_length_scatter.png")
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +243,8 @@ def save_report(
         "- results/tables/param_compare.csv",
         "- results/plots/input_lengths.png",
         "- results/plots/param_compare.png",
+        "- results/plots/gc_boxplot.png",
+        "- results/plots/gc_vs_length_scatter.png",
     ]
 
     report_path = results_dir / "REPORT.md"
