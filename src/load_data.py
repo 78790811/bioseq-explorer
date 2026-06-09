@@ -143,10 +143,18 @@ def read_csv_tsv(path: Path) -> list[dict]:
 # Main loader: loads all supported files from a directory
 # ---------------------------------------------------------------------------
 
-def load_all_files(source_dir: Path) -> tuple[list[dict], list[dict]]:
+def load_all_files(
+    source_dir: Path,
+    selected_files: list[Path] | None = None,
+) -> tuple[list[dict], list[dict]]:
     """Load all supported files from the source directory.
 
     Supported formats: .fasta, .fa, .csv, .tsv
+
+    Args:
+        source_dir:     path to the source directory
+        selected_files: optional list of specific files to load.
+                        If None, all supported files are loaded.
 
     Returns:
         all_records: flat list of all records from all files
@@ -156,12 +164,16 @@ def load_all_files(source_dir: Path) -> tuple[list[dict], list[dict]]:
     all_records = []
     file_profile = []
 
-    # Collect all supported files and sort them alphabetically
-    supported_extensions = {".fasta", ".fa", ".csv", ".tsv"}
-    all_files = sorted([
-        p for p in source_dir.iterdir()
-        if p.suffix.lower() in supported_extensions
-    ])
+    # Use selected files if provided, otherwise load all supported files
+    if selected_files is not None:
+        all_files = sorted(selected_files)
+    else:
+        # Collect all supported files and sort them alphabetically
+        supported_extensions = {".fasta", ".fa", ".csv", ".tsv"}
+        all_files = sorted([
+            p for p in source_dir.iterdir()
+            if p.suffix.lower() in supported_extensions
+        ])
 
     for path in all_files:
         ext = path.suffix.lower()

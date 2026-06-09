@@ -3,11 +3,13 @@
 # Orchestrates loading, cleaning, integration and reporting.
 #
 # Usage:
-#   python main.py --variant A
+#   python main.py --variant A        run single variant (A, B or C)
 #   python main.py --variant B
 #   python main.py --variant C
-#   python main.py --all
-#   python main.py --dry-run
+#   python main.py --all              run all variants
+#   python main.py --dry-run          load files only, no filtering
+#   python main.py --select           interactively select files to process
+#   python main.py --delete           interactively delete files from source/
 
 from __future__ import annotations
 import argparse
@@ -33,6 +35,128 @@ from src.load_data import load_all_files
 from src.stats import compute_input_stats, save_csv, save_param_compare
 from src.pipeline import run_pipeline
 
+# ---------------------------------------------------------------------------
+# Interactive file selector
+# ---------------------------------------------------------------------------
+
+def list_source_files(source_dir: Path) -> list[Path]:
+    """List all supported files in the source directory.
+
+    Returns a sorted list of Path objects for supported file types.
+    """
+    supported = {".fasta", ".fa", ".csv", ".tsv"}
+    return sorted([
+        p for p in source_dir.iterdir()
+        if p.suffix.lower() in supported
+    ])
+
+
+def select_files_interactive(
+    source_dir: Path,
+    mode: str = "process",
+) -> list[Path]:
+    """Interactively display files and let user select which ones to use.
+
+    Args:
+        source_dir: path to the source directory
+        mode:       "process" — select files to process
+                    "delete"  — select files to delete
+
+    Returns:
+        list of selected Path objects
+    """
+    all_files = list_source_files(source_dir)
+
+    if not all_files:
+        print("\nNo supported files found in source/ directory.")
+        return []
+
+    # --- Display file list ---
+    print("\n" + "=" * 60)
+    if mode == "delete":
+        print("FILE MANAGER — select files to DELETE from source/")
+    else:
+        print("FILE SELECTOR — select files to process")
+    print("=" * 60)
+
+    for i, path in enumerate(all_files, start=1):
+        # Show file size in KB for context
+        size_kb = path.stat().st_size / 1024
+        print(f"  [{i:2d}] {path.name:<40s} {size_kb:8.1f} KB")
+
+    print("=" * 60)
+
+    if mode == "delete":
+        print("Enter numbers to DELETE (e.g. 1 3 5), or 'all', or 'none':")
+    else:
+        print("Enter numbers to PROCESS (e.g. 1 3 5), or 'all', or 'none':")
+
+    # --- Get user input ---
+    while True:
+        raw = input("> ").strip().lower()
+
+        if raw == "none":
+            print("  No files selected.")
+            return []
+
+        if raw == "all":
+            print(f"  Selected all {len(all_files)} files.")
+            return all_files
+
+        # Parse space-separated numbers
+        try:
+            indices = [int(x) for x in raw.split()]
+            selected = []
+            valid = True
+            for idx in indices:
+                if 1 <= idx <= len(all_files):
+                    selected.append(all_files[idx - 1])
+                else:
+                    print(f"  ERROR: {idx} is out of range "
+                          f"(1-{len(all_files)}). Try again.")
+                    valid = False
+                    break
+            if valid:
+                print(f"  Selected {len(selected)} file(s).")
+                return selected
+        except ValueError:
+            print("  ERROR: Enter numbers separated by spaces, "
+                  "'all', or 'none'. Try again.")
+
+
+def delete_files_interactive(source_dir: Path) -> None:
+    """Interactively select and permanently delete files from source/.
+
+    Asks for confirmation before deleting.
+    """
+    selected = select_files_interactive(source_dir, mode="delete")
+
+    if not selected:
+        return
+
+    # --- Show confirmation ---
+    print("\nFiles selected for deletion:")
+    for path in selected:
+        print(f"  - {path.name}")
+
+    print("\nAre you sure you want to permanently delete these files? (yes/no)")
+    confirm = input("> ").strip().lower()
+
+    if confirm != "yes":
+        print("  Deletion cancelled.")
+        return
+
+    # --- Delete files ---
+    deleted = 0
+    for path in selected:
+        try:
+            path.unlink()
+            print(f"  Deleted: {path.name}")
+            deleted += 1
+        except OSError as e:
+            print(f"  ERROR deleting {path.name}: {e}")
+
+    print(f"\n  Done. {deleted} file(s) deleted from source/.")
 
 # ---------------------------------------------------------------------------
 # Plot generator
@@ -308,12 +432,38 @@ def main() -> None:
         action="store_true",
         help="Load files and show stats — no filtering or saving",
     )
+    parser.add_argument(
+        "--select",
+        action="store_true",
+        help="Interactively select which files to process",
+    )
+    parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="Interactively select and delete files from source/",
+    )
     args = parser.parse_args()
 
     # Print help if no argument was given
-    if not args.variant and not args.all and not args.dry_run:
+    if not any([
+        args.variant, args.all, args.dry_run,
+        args.select, args.delete,
+    ]):
         parser.print_help()
         sys.exit(1)
+
+    # --- Handle --delete mode ---
+    if args.delete:
+        delete_files_interactive(config.SOURCE_DIR)
+        return
+
+    # --- Handle --select mode: load only chosen files ---
+    if args.select:
+        selected_files = select_files_interactive(config.SOURCE_DIR)
+        if not selected_files:
+            print("No files selected. Exiting.")
+            return
+        print(f"\nProcessing {len(selected_files)} selected file(s)...")
 
     # --- Create results directories ---
     results_dir = config.RESULTS_DIR
@@ -322,8 +472,16 @@ def main() -> None:
     (results_dir / "plots").mkdir(exist_ok=True)
 
     # --- Step 1: Load all input files ---
-    print(f"\nLoading files from: {config.SOURCE_DIR}")
-    records, file_profile = load_all_files(config.SOURCE_DIR)
+    # In --select mode, load only the files chosen by the user
+    if args.select:
+        records, file_profile = load_all_files(
+            config.SOURCE_DIR,
+            selected_files=selected_files,
+        )
+    else:
+        print(f"\nLoading files from: {config.SOURCE_DIR}")
+        records, file_profile = load_all_files(config.SOURCE_DIR)
+
     print(f"  Total records loaded: {len(records)}")
 
     # Save file profile summary
@@ -354,11 +512,12 @@ def main() -> None:
             f"N={row['n_pct']:5.1f}%"
         )
 
-    # --- Step 3: Run variant(s) ---
-    to_run = (
-        list(config.VARIANTS.keys()) if args.all
-        else [args.variant]
-    )
+        # --- Step 3: Run variant(s) ---
+        # In --select mode without --variant or --all, default to all variants
+        if args.all or (args.select and not args.variant):
+            to_run = list(config.VARIANTS.keys())
+        else:
+            to_run = [args.variant]
 
     results_by_variant = {}
     for variant in to_run:
