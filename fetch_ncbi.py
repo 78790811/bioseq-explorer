@@ -97,7 +97,6 @@ def fetch_gene_sequences(
     )
 
     # --- Step 3: Parse and save to file ---
-    output_path = output_dir / f"{gene_symbol.lower()}_sequences.fasta"
     records = list(SeqIO.parse(fetch_handle, "fasta"))
     fetch_handle.close()
 

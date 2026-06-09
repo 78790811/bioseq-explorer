@@ -25,17 +25,18 @@ def n_content(sequence: str) -> float:
     return sequence.count("N") / len(sequence)
 
 
+# Set of valid DNA characters — defined at module level for efficiency
+ALLOWED_BASES = frozenset("ATGCN")
+
+
 def is_valid_sequence(sequence: str) -> bool:
     """Check if a sequence contains only valid DNA characters.
 
     Valid characters are: A, T, G, C, N (uppercase).
     Returns False if any other character is found.
     """
-    # Define the set of allowed DNA characters
-    allowed = set("ATGCN")
-
-    # Return True only if every character is in the allowed set
-    return all(char in allowed for char in sequence)
+    # Check every character against the allowed set
+    return all(char in ALLOWED_BASES for char in sequence)
 
 
 # ---------------------------------------------------------------------------

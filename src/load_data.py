@@ -70,44 +70,47 @@ def read_fasta(path: Path) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Column name mapping for CSV / TSV files
+# ---------------------------------------------------------------------------
+
+# Mapping from known column name variants to canonical names.
+# Keys are lowercase — comparison uses .lower().strip() on actual column names.
+COLUMN_MAP = {
+    # sequence variants
+    "dnaseq": "sequence",
+    "dnasequence": "sequence",
+    "dna_sequence": "sequence",
+    "seq": "sequence",
+    "nucleotides": "sequence",
+    "sequence": "sequence",
+    # id variants
+    "gene": "id",
+    "genesymbol": "id",
+    "gene_id": "id",
+    "gene_name": "id",
+    "accession": "id",
+    "id": "id",
+    # organism variants
+    "organism": "organism",
+    "species": "organism",
+    "org": "organism",
+}
+
+
+# ---------------------------------------------------------------------------
 # CSV / TSV file reader
 # ---------------------------------------------------------------------------
 
 def read_csv_tsv(path: Path) -> list[dict]:
     """Read a single CSV or TSV file and return a list of row records.
 
-    Automatically maps common column name variants to canonical names:
-        'sequence' canonical ← DNASequence, dna_sequence, seq,
-                                nucleotides, Sequence, SEQUENCE
-        'id'       canonical ← gene, GeneSymbol, gene_id, gene_name,
-                                accession, ID, Gene
+    Automatically maps common column name variants to canonical names
+    using COLUMN_MAP defined at module level.
 
     A '_source' key is added to each record with the filename.
     """
     # Choose delimiter based on file extension
     delimiter = "\t" if path.suffix == ".tsv" else ","
-
-    # Mapping from known column name variants to canonical names
-    COLUMN_MAP = {
-        # sequence variants
-        "dnaseq": "sequence",
-        "dnasequence": "sequence",
-        "dna_sequence": "sequence",
-        "seq": "sequence",
-        "nucleotides": "sequence",
-        "sequence": "sequence",
-        # id variants
-        "gene": "id",
-        "genesymbol": "id",
-        "gene_id": "id",
-        "gene_name": "id",
-        "accession": "id",
-        "id": "id",
-        # organism variants
-        "organism": "organism",
-        "species": "organism",
-        "org": "organism",
-    }
 
     records = []
 

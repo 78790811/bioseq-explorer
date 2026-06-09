@@ -512,12 +512,12 @@ def main() -> None:
             f"N={row['n_pct']:5.1f}%"
         )
 
-        # --- Step 3: Run variant(s) ---
-        # In --select mode without --variant or --all, default to all variants
-        if args.all or (args.select and not args.variant):
-            to_run = list(config.VARIANTS.keys())
-        else:
-            to_run = [args.variant]
+    # --- Step 3: Run variant(s) ---
+    # In --select mode without --variant or --all, default to all variants
+    if args.all or (args.select and not args.variant):
+        to_run = list(config.VARIANTS.keys())
+    else:
+        to_run = [args.variant]
 
     results_by_variant = {}
     for variant in to_run:
