@@ -14,7 +14,9 @@ SOURCE_DIR = Path("source")
 # Directory where all results are saved
 RESULTS_DIR = Path("results")
 
-# Path to the cleaned and integrated output file produced by the pipeline
+# Path to the cleaned and integrated output file produced by the pipeline.
+# Note: HUBA generates variant-specific files (clean_dataset_A.csv etc.).
+# This path is reserved for use by BioSeq Explorer App (loads one dataset).
 CLEAN_OUTPUT = RESULTS_DIR / "tables" / "clean_dataset.csv"
 
 # ---------------------------------------------------------------------------
