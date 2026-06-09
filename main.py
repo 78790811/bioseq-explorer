@@ -70,7 +70,7 @@ def make_plots(
 
     # Assign a colour per source file
     unique_sources = list(dict.fromkeys(sorted_sources))
-    color_map_bar = plt.cm.get_cmap("tab10", len(unique_sources))
+    color_map_bar = matplotlib.colormaps.get_cmap("tab10").resampled(len(unique_sources))
     source_to_color = {
         src: color_map_bar(i) for i, src in enumerate(unique_sources)
     }
@@ -157,7 +157,7 @@ def make_plots(
     ]
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.boxplot(source_data, labels=short_labels, patch_artist=True,
+    ax.boxplot(source_data, tick_labels=short_labels, patch_artist=True,
                boxprops=dict(facecolor="steelblue", alpha=0.6))
     ax.set_title("GC% distribution per source file")
     ax.set_xlabel("Source file")
@@ -176,7 +176,7 @@ def make_plots(
     colors_scatter = []
 
     # Assign a colour per source file for visual grouping
-    color_map = plt.cm.get_cmap("tab10", len(sources))
+    color_map = matplotlib.colormaps.get_cmap("tab10").resampled(len(sources))
     source_color = {
         src: color_map(i) for i, src in enumerate(source_labels)
     }
