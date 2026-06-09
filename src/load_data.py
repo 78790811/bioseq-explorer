@@ -76,21 +76,64 @@ def read_fasta(path: Path) -> list[dict]:
 def read_csv_tsv(path: Path) -> list[dict]:
     """Read a single CSV or TSV file and return a list of row records.
 
-    Each record is a dictionary where keys are column headers
-    and values are the corresponding cell values.
+    Automatically maps common column name variants to canonical names:
+        'sequence' canonical ← DNASequence, dna_sequence, seq,
+                                nucleotides, Sequence, SEQUENCE
+        'id'       canonical ← gene, GeneSymbol, gene_id, gene_name,
+                                accession, ID, Gene
+
     A '_source' key is added to each record with the filename.
     """
     # Choose delimiter based on file extension
     delimiter = "\t" if path.suffix == ".tsv" else ","
+
+    # Mapping from known column name variants to canonical names
+    COLUMN_MAP = {
+        # sequence variants
+        "dnaseq": "sequence",
+        "dnasequence": "sequence",
+        "dna_sequence": "sequence",
+        "seq": "sequence",
+        "nucleotides": "sequence",
+        "sequence": "sequence",
+        # id variants
+        "gene": "id",
+        "genesymbol": "id",
+        "gene_id": "id",
+        "gene_name": "id",
+        "accession": "id",
+        "id": "id",
+        # organism variants
+        "organism": "organism",
+        "species": "organism",
+        "org": "organism",
+    }
 
     records = []
 
     with path.open(mode="r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f, delimiter=delimiter)
         for row in reader:
-            # Convert row to regular dict and add source filename
-            record = dict(row)
+            record: dict = {}
+
+            # Map each column to its canonical name if known
+            for original_key, value in row.items():
+                canonical = COLUMN_MAP.get(original_key.lower().strip())
+                if canonical:
+                    # Only set if not already set — first match wins
+                    if canonical not in record:
+                        record[canonical] = value
+                else:
+                    # Keep unmapped columns as-is
+                    record[original_key] = value
+
+            # Add source filename
             record["_source"] = path.name
+
+            # Skip rows without a sequence
+            if not record.get("sequence"):
+                continue
+
             records.append(record)
 
     return records
