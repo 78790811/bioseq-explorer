@@ -133,10 +133,8 @@ def read_csv_tsv(path: Path) -> list[dict]:
             # Add source filename
             record["_source"] = path.name
 
-            # Skip rows without a sequence
-            if not record.get("sequence"):
-                continue
-
+            # Keep all records — even those without a sequence
+            # Empty sequences will be caught by cleaner.py (EMPTY_SEQUENCE rule)
             records.append(record)
 
     return records
