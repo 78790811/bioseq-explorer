@@ -185,14 +185,14 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         super().__init__(parent)
 
         self.title("Run HUBA Pipeline")
-        self.geometry("460x640")
+        self.geometry("460x670")
         self.resizable(False, False)
 
         # Center on screen
         self.update_idletasks()
         x = (self.winfo_screenwidth() - 460) // 2
         y = (self.winfo_screenheight() - 640) // 2
-        self.geometry(f"460x640+{x}+{y}")
+        self.geometry(f"460x670+{x}+{y}")
 
         # Variant checkboxes state
         self.var_a = ctk.BooleanVar(value=True)
