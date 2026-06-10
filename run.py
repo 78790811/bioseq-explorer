@@ -1,0 +1,305 @@
+# run.py
+# Launcher for BioSeq Explorer.
+# Displays a startup window with options to run HUBA pipeline
+# or open BioSeq Explorer GUI directly.
+#
+# Usage:
+#   python run.py
+
+from __future__ import annotations
+import subprocess
+import sys
+from pathlib import Path
+from datetime import datetime
+
+import customtkinter as ctk
+
+
+# ---------------------------------------------------------------------------
+# Appearance settings
+# ---------------------------------------------------------------------------
+
+ctk.set_appearance_mode("system")
+ctk.set_default_color_theme("blue")
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+def get_latest_dataset() -> tuple[str, str] | None:
+    """Find the most recently modified clean_dataset_*.csv file.
+
+    Returns:
+        tuple (filename, modified_time_str) or None if no dataset found
+    """
+    tables_dir = Path("results") / "tables"
+    if not tables_dir.exists():
+        return None
+
+    datasets = list(tables_dir.glob("clean_dataset_*.csv"))
+    if not datasets:
+        return None
+
+    # Find the most recently modified file
+    latest = max(datasets, key=lambda p: p.stat().st_mtime)
+    modified = datetime.fromtimestamp(latest.stat().st_mtime)
+    modified_str = modified.strftime("%Y-%m-%d %H:%M")
+
+    return latest.name, modified_str
+
+
+# ---------------------------------------------------------------------------
+# Launcher window
+# ---------------------------------------------------------------------------
+
+class LauncherWindow(ctk.CTk):
+    """Main launcher window for BioSeq Explorer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # --- Window setup ---
+        self.title("BioSeq Explorer — Launcher")
+        self.geometry("420x380")
+        self.resizable(False, False)
+
+        # Center window on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - 420) // 2
+        y = (self.winfo_screenheight() - 380) // 2
+        self.geometry(f"420x380+{x}+{y}")
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the launcher UI."""
+
+        # --- Title ---
+        ctk.CTkLabel(
+            self,
+            text="BioSeq Explorer",
+            font=ctk.CTkFont(size=24, weight="bold"),
+        ).pack(pady=(30, 4))
+
+        ctk.CTkLabel(
+            self,
+            text="Bioinformatics platform for disease-associated gene analysis",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            wraplength=360,
+            justify="center",
+        ).pack(pady=(0, 24))
+
+        # --- Dataset info ---
+        dataset_info = get_latest_dataset()
+
+        if dataset_info:
+            name, modified = dataset_info
+            info_text = f"Last dataset: {name}\nGenerated: {modified}"
+            info_color = "green"
+        else:
+            info_text = "No dataset found.\nRun HUBA pipeline first."
+            info_color = "orange"
+
+        ctk.CTkLabel(
+            self,
+            text=info_text,
+            font=ctk.CTkFont(size=12),
+            text_color=info_color,
+            justify="center",
+        ).pack(pady=(0, 24))
+
+        # --- Buttons ---
+        ctk.CTkButton(
+            self,
+            text="▶  Run HUBA Pipeline",
+            width=280,
+            height=44,
+            font=ctk.CTkFont(size=14),
+            command=self._run_huba,
+        ).pack(pady=8)
+
+        ctk.CTkButton(
+            self,
+            text="📊  Open BioSeq Explorer",
+            width=280,
+            height=44,
+            font=ctk.CTkFont(size=14),
+            fg_color="green" if dataset_info else "gray",
+            hover_color="darkgreen" if dataset_info else "gray",
+            command=self._open_explorer,
+            state="normal" if dataset_info else "disabled",
+        ).pack(pady=8)
+
+        ctk.CTkButton(
+            self,
+            text="Exit",
+            width=280,
+            height=36,
+            font=ctk.CTkFont(size=12),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray30", "gray70"),
+            hover_color=("gray85", "gray25"),
+            command=self.destroy,
+        ).pack(pady=(8, 0))
+
+    def _run_huba(self) -> None:
+        """Open a new terminal window and run the HUBA pipeline."""
+        self.withdraw()
+
+        # Run HUBA in a new terminal window
+        huba_window = HubaRunnerWindow(self)
+        huba_window.grab_set()
+        self.wait_window(huba_window)
+
+        # Refresh launcher after HUBA finishes
+        self.deiconify()
+        self._refresh()
+
+    def _open_explorer(self) -> None:
+        """Launch BioSeq Explorer GUI."""
+        self.withdraw()
+        subprocess.Popen(
+            [sys.executable, "app/main.py"],
+            cwd=Path.cwd(),
+        )
+        self.destroy()
+
+    def _refresh(self) -> None:
+        """Refresh the launcher UI to reflect new dataset status."""
+        for widget in self.winfo_children():
+            widget.destroy()
+        self._build_ui()
+
+
+# ---------------------------------------------------------------------------
+# HUBA runner window
+# ---------------------------------------------------------------------------
+
+class HubaRunnerWindow(ctk.CTkToplevel):
+    """Window for running HUBA pipeline with mode selection."""
+
+    def __init__(self, parent: ctk.CTk) -> None:
+        super().__init__(parent)
+
+        self.title("Run HUBA Pipeline")
+        self.geometry("400x420")
+        self.resizable(False, False)
+
+        # Center on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - 400) // 2
+        y = (self.winfo_screenheight() - 420) // 2
+        self.geometry(f"400x420+{x}+{y}")
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the HUBA runner UI."""
+
+        ctk.CTkLabel(
+            self,
+            text="Run HUBA Pipeline",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(24, 4))
+
+        ctk.CTkLabel(
+            self,
+            text="Select how to run the data preparation pipeline:",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+        ).pack(pady=(0, 20))
+
+        # --- Mode buttons ---
+        modes = [
+            ("--all", "Run all variants (A, B, C)",
+             "Process all files in source/ with all filter variants"),
+            ("--select", "Select files interactively",
+             "Choose which files to process"),
+            ("--dry-run", "Dry run (load only)",
+             "Load files and show stats — no filtering"),
+        ]
+
+        for flag, label, description in modes:
+            frame = ctk.CTkFrame(self, fg_color="transparent")
+            frame.pack(fill="x", padx=20, pady=4)
+
+            ctk.CTkButton(
+                frame,
+                text=label,
+                width=180,
+                height=36,
+                font=ctk.CTkFont(size=13),
+                command=lambda f=flag: self._run(f),
+            ).pack(side="left")
+
+            ctk.CTkLabel(
+                frame,
+                text=description,
+                font=ctk.CTkFont(size=11),
+                text_color="gray",
+                wraplength=160,
+                justify="left",
+            ).pack(side="left", padx=(12, 0))
+
+        # --- Status label ---
+        self.status_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            wraplength=340,
+            justify="center",
+        )
+        self.status_label.pack(pady=(20, 0))
+
+        # --- Close button ---
+        ctk.CTkButton(
+            self,
+            text="Close",
+            width=160,
+            height=36,
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray30", "gray70"),
+            hover_color=("gray85", "gray25"),
+            command=self.destroy,
+        ).pack(pady=(16, 0))
+
+    def _run(self, flag: str) -> None:
+        """Run HUBA with the selected flag in a new terminal window."""
+        self.status_label.configure(
+            text=f"Running HUBA {flag}...\nCheck the terminal window.",
+            text_color="blue",
+        )
+        self.update()
+
+        try:
+            # Open a new terminal window running HUBA
+            subprocess.Popen(
+                ["cmd", "/c", "start", "cmd", "/k",
+                 f"{sys.executable} main.py {flag}"],
+                cwd=Path.cwd(),
+                shell=True,
+            )
+            self.status_label.configure(
+                text="HUBA started in a new terminal window.\n"
+                     "Close that window when done, then close this.",
+                text_color="green",
+            )
+        except Exception as e:
+            self.status_label.configure(
+                text=f"Error: {e}",
+                text_color="red",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app = LauncherWindow()
+    app.mainloop()
