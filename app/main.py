@@ -732,7 +732,7 @@ class ORFAnalysisTab(ctk.CTkFrame):
 
 
 # ---------------------------------------------------------------------------
-# Tab: Statistics (placeholder)
+# Tab: Statistics
 # ---------------------------------------------------------------------------
 
 class StatisticsTab(ctk.CTkFrame):
@@ -740,31 +740,28 @@ class StatisticsTab(ctk.CTkFrame):
 
     def __init__(self, parent: ctk.CTkTabview) -> None:
         super().__init__(parent, fg_color="transparent")
-        self._build_placeholder()
 
-    def _build_placeholder(self) -> None:
-        """Show a placeholder until data is loaded and module is implemented.
+        self.qc_df = None
+        self._stats = None   # Loaded stats module
+        self._plots = None   # Loaded plots module
 
-        Args:
-            None
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
 
-        Returns:
-            None
-        """
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Statistics",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(40, 8))
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Load a dataset in the Home tab to enable this analysis.",
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
 
     def load_data(self, df) -> None:
-        """Receive the loaded DataFrame from HomeTab.
+        """Receive DataFrame, compute QC metrics and build the Statistics UI.
 
         Args:
             df: pandas DataFrame with sequence data.
@@ -772,7 +769,372 @@ class StatisticsTab(ctk.CTkFrame):
         Returns:
             None
         """
-        pass
+        import importlib.util as _ilu
+
+        # Load analyzer to get QC metrics
+        _ana_path = APP_DIR / "src" / "analyzer.py"
+        _spec = _ilu.spec_from_file_location("analyzer", _ana_path)
+        analyzer = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(analyzer)
+
+        # Load stats module
+        _st_path = APP_DIR / "src" / "stats.py"
+        _spec2 = _ilu.spec_from_file_location("stats", _st_path)
+        self._stats = _ilu.module_from_spec(_spec2)
+        _spec2.loader.exec_module(self._stats)
+
+        # Load plots module (for correlation heatmap)
+        _plt_path = APP_DIR / "src" / "plots.py"
+        _spec3 = _ilu.spec_from_file_location("plots", _plt_path)
+        self._plots = _ilu.module_from_spec(_spec3)
+        _spec3.loader.exec_module(self._plots)
+
+        try:
+            self.qc_df = analyzer.run_quality_analysis(df)
+        except Exception as e:
+            messagebox.showerror("Stats Error", f"Could not prepare data:\n{e}")
+            return
+
+        self._placeholder.destroy()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the full Statistics UI.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Main layout: left = controls + results, right = correlation ---
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=16)
+        content.columnconfigure(0, weight=3)
+        content.columnconfigure(1, weight=2)
+        content.rowconfigure(0, weight=1)
+
+        # ── LEFT PANEL ──────────────────────────────────────────────────────
+        left = ctk.CTkFrame(content)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(
+            left,
+            text="Statistical tests",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 8))
+
+        # --- Controls ---
+        controls = ctk.CTkFrame(left, fg_color="transparent")
+        controls.pack(fill="x", padx=12)
+
+        # Metric selector
+        metric_row = ctk.CTkFrame(controls, fg_color="transparent")
+        metric_row.pack(fill="x", pady=(0, 6))
+        ctk.CTkLabel(
+            metric_row, text="Metric:", width=80,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
+        self.metric_var = ctk.StringVar(value="gc_content")
+        ctk.CTkOptionMenu(
+            metric_row,
+            variable=self.metric_var,
+            values=["gc_content", "n_content", "length"],
+            width=180,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left", padx=(8, 0))
+
+        # Test selector
+        test_row = ctk.CTkFrame(controls, fg_color="transparent")
+        test_row.pack(fill="x", pady=(0, 6))
+        ctk.CTkLabel(
+            test_row, text="Test:", width=80,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
+        self.test_var = ctk.StringVar(value="ANOVA")
+        self.test_menu = ctk.CTkOptionMenu(
+            test_row,
+            variable=self.test_var,
+            values=["ANOVA", "t-test", "Mann-Whitney U"],
+            width=180,
+            font=ctk.CTkFont(size=12),
+            command=self._on_test_changed,
+        )
+        self.test_menu.pack(side="left", padx=(8, 0))
+
+        # Group selectors (shown only for t-test and Mann-Whitney)
+        self.group_frame = ctk.CTkFrame(controls, fg_color="transparent")
+        self.group_frame.pack(fill="x")
+
+        sources = sorted(self.qc_df["_source"].unique()) \
+            if "_source" in self.qc_df.columns else []
+
+        group_a_row = ctk.CTkFrame(self.group_frame, fg_color="transparent")
+        group_a_row.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(
+            group_a_row, text="Group A:", width=80,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
+        self.group_a_var = ctk.StringVar(
+            value=sources[0] if sources else ""
+        )
+        self.group_a_menu = ctk.CTkOptionMenu(
+            group_a_row,
+            variable=self.group_a_var,
+            values=sources if sources else ["—"],
+            width=220,
+            font=ctk.CTkFont(size=11),
+        )
+        self.group_a_menu.pack(side="left", padx=(8, 0))
+
+        group_b_row = ctk.CTkFrame(self.group_frame, fg_color="transparent")
+        group_b_row.pack(fill="x", pady=(0, 6))
+        ctk.CTkLabel(
+            group_b_row, text="Group B:", width=80,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
+        self.group_b_var = ctk.StringVar(
+            value=sources[1] if len(sources) > 1 else ""
+        )
+        self.group_b_menu = ctk.CTkOptionMenu(
+            group_b_row,
+            variable=self.group_b_var,
+            values=sources if sources else ["—"],
+            width=220,
+            font=ctk.CTkFont(size=11),
+        )
+        self.group_b_menu.pack(side="left", padx=(8, 0))
+
+        # Hide group selectors for ANOVA (default)
+        self.group_frame.pack_forget()
+
+        # Run button
+        ctk.CTkButton(
+            left,
+            text="▶  Run Test",
+            height=36,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._run_test,
+        ).pack(fill="x", padx=12, pady=(8, 4))
+
+        # Result interpretation label
+        self.result_label = ctk.CTkLabel(
+            left,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            wraplength=420,
+            justify="left",
+        )
+        self.result_label.pack(anchor="w", padx=12, pady=(4, 8))
+
+        # Results Treeview
+        ctk.CTkLabel(
+            left,
+            text="Test results",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+
+        tree_container = tk.Frame(left)
+        tree_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        self.result_tree = ttk.Treeview(
+            tree_container,
+            columns=["Parameter", "Value"],
+            show="headings",
+            height=10,
+        )
+        self.result_tree.heading("Parameter", text="Parameter")
+        self.result_tree.heading("Value", text="Value")
+        self.result_tree.column("Parameter", width=180, minwidth=120)
+        self.result_tree.column("Value", width=260, minwidth=120)
+
+        vsb = ttk.Scrollbar(
+            tree_container, orient="vertical", command=self.result_tree.yview
+        )
+        self.result_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.result_tree.pack(fill="both", expand=True)
+
+        # ── RIGHT PANEL: Correlation matrix ─────────────────────────────────
+        right = ctk.CTkFrame(content)
+        right.grid(row=0, column=1, sticky="nsew")
+
+        ctk.CTkLabel(
+            right,
+            text="Correlation matrix",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        # Method toggle
+        method_row = ctk.CTkFrame(right, fg_color="transparent")
+        method_row.pack(fill="x", padx=12, pady=(0, 6))
+        ctk.CTkLabel(
+            method_row, text="Method:",
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
+        self.corr_method_var = ctk.StringVar(value="pearson")
+        ctk.CTkOptionMenu(
+            method_row,
+            variable=self.corr_method_var,
+            values=["pearson", "spearman"],
+            width=140,
+            font=ctk.CTkFont(size=12),
+            command=lambda _: self._update_correlation(),
+        ).pack(side="left", padx=(8, 0))
+
+        # Correlation heatmap area
+        self.corr_frame = tk.Frame(right)
+        self.corr_frame.pack(fill="both", expand=True, padx=12, pady=(0, 4))
+
+        ctk.CTkButton(
+            right,
+            text="⤢  Open in window",
+            height=28,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray20", "gray80"),
+            hover_color=("gray85", "gray25"),
+            command=self._open_corr_window,
+        ).pack(anchor="e", padx=12, pady=(0, 8))
+
+        # Draw initial correlation heatmap
+        self._corr_fig = None
+        self._update_correlation()
+
+    def _on_test_changed(self, value: str) -> None:
+        """Show or hide group selectors depending on selected test.
+
+        Args:
+            value: Selected test name.
+
+        Returns:
+            None
+        """
+        if value == "ANOVA":
+            self.group_frame.pack_forget()
+        else:
+            self.group_frame.pack(fill="x")
+
+    def _run_test(self) -> None:
+        """Run the selected statistical test and display results.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        metric = self.metric_var.get()
+        test = self.test_var.get()
+
+        if test == "ANOVA":
+            result = self._stats.run_anova(self.qc_df, metric)
+        elif test == "t-test":
+            result = self._stats.run_ttest(
+                self.qc_df, metric,
+                self.group_a_var.get(), self.group_b_var.get(),
+            )
+        else:  # Mann-Whitney U
+            result = self._stats.run_mannwhitney(
+                self.qc_df, metric,
+                self.group_a_var.get(), self.group_b_var.get(),
+            )
+
+        # Show interpretation
+        if "error" in result:
+            self.result_label.configure(
+                text=result["error"], text_color="red"
+            )
+        else:
+            color = "#2CA02C" if result.get("significant") else "#E05A2B"
+            self.result_label.configure(
+                text=result.get("note", ""), text_color=color
+            )
+
+        # Populate results Treeview
+        result_df = self._stats.result_to_dataframe(result)
+        self.result_tree.delete(*self.result_tree.get_children())
+        for _, row in result_df.iterrows():
+            self.result_tree.insert(
+                "", "end", values=[row["Parameter"], row["Value"]]
+            )
+
+    def _update_correlation(self) -> None:
+        """Recompute and redraw the correlation heatmap.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        method = self.corr_method_var.get()
+        corr_matrix = self._stats.compute_correlation_matrix(
+            self.qc_df, method=method
+        )
+
+        # Build heatmap figure
+        fig, ax = plt.subplots(figsize=(4.0, 3.2), dpi=100)
+        fig.patch.set_facecolor("#F5F5F5")
+
+        im = ax.imshow(corr_matrix.values, cmap="coolwarm", vmin=-1, vmax=1)
+        fig.colorbar(im, ax=ax, shrink=0.8)
+
+        labels = list(corr_matrix.columns)
+        ax.set_xticks(range(len(labels)))
+        ax.set_yticks(range(len(labels)))
+        ax.set_xticklabels(labels, fontsize=9, rotation=20, ha="right")
+        ax.set_yticklabels(labels, fontsize=9)
+
+        # Annotate cells with correlation values
+        for i in range(len(labels)):
+            for j in range(len(labels)):
+                ax.text(
+                    j, i,
+                    f"{corr_matrix.values[i, j]:.2f}",
+                    ha="center", va="center",
+                    fontsize=10, fontweight="bold",
+                    color="white" if abs(corr_matrix.values[i, j]) > 0.5
+                    else "black",
+                )
+
+        ax.set_title(
+            f"Correlation matrix ({method.capitalize()})",
+            fontsize=11, fontweight="bold", pad=8,
+        )
+        fig.tight_layout()
+
+        self._corr_fig = fig
+
+        # Clear previous canvas and embed new one
+        for widget in self.corr_frame.winfo_children():
+            widget.destroy()
+        canvas = FigureCanvasTkAgg(fig, master=self.corr_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _open_corr_window(self) -> None:
+        """Open the correlation heatmap in a standalone window.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        if self._corr_fig is not None:
+            self._plots.open_plot_window(
+                self._corr_fig,
+                title=f"Correlation Matrix ({self.corr_method_var.get().capitalize()})",
+            )
 
 
 # ---------------------------------------------------------------------------
