@@ -1,0 +1,946 @@
+# app/main.py
+# Main entry point for BioSeq Explorer GUI.
+# Creates the main application window with a tab-based layout.
+# Each tab is a placeholder frame — functionality will be added module by module.
+#
+# Usage:
+#   python app/main.py          (from project root)
+#   python main.py              (from app/ directory)
+
+from __future__ import annotations
+
+import sys
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
+
+import customtkinter as ctk
+
+# ---------------------------------------------------------------------------
+# Path setup — allow running from project root or from app/ directory
+# ---------------------------------------------------------------------------
+
+# Add the app/ directory to sys.path so that config can be imported
+APP_DIR = Path(__file__).resolve().parent
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+# Add project root to sys.path (needed for future imports from src/)
+PROJECT_ROOT = APP_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import importlib.util as _ilu
+
+# Always load app/config.py — not the root config.py used by HUBA
+_cfg_path = APP_DIR / "config.py"
+_spec = _ilu.spec_from_file_location("app_config", _cfg_path)
+config = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(config)
+
+# ---------------------------------------------------------------------------
+# Appearance settings
+# ---------------------------------------------------------------------------
+
+ctk.set_appearance_mode(config.APPEARANCE_MODE)
+ctk.set_default_color_theme(config.COLOR_THEME)
+
+
+# ---------------------------------------------------------------------------
+# Helper — Treeview styling
+# ---------------------------------------------------------------------------
+
+def apply_treeview_style() -> None:
+    """Apply a clean style to all ttk.Treeview widgets.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure(
+        "Treeview",
+        rowheight=24,
+        font=("Segoe UI", 11),
+        borderwidth=0,
+    )
+    style.configure(
+        "Treeview.Heading",
+        font=("Segoe UI", 11, "bold"),
+        relief="flat",
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", "#1F6AA5")],
+        foreground=[("selected", "white")],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tab: Home
+# ---------------------------------------------------------------------------
+
+class HomeTab(ctk.CTkFrame):
+    """Home tab — load dataset and display HUBA report summary."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+
+        self.df = None           # Loaded pandas DataFrame
+        self.dataset_path = None # Path to the loaded CSV file
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the Home tab layout.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Top bar: load button + dataset info ---
+        top_bar = ctk.CTkFrame(self, fg_color="transparent")
+        top_bar.pack(fill="x", padx=16, pady=(16, 8))
+
+        ctk.CTkButton(
+            top_bar,
+            text="📂  Load Dataset",
+            width=160,
+            height=36,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._load_dataset,
+        ).pack(side="left")
+
+        self.dataset_label = ctk.CTkLabel(
+            top_bar,
+            text="No dataset loaded.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+        )
+        self.dataset_label.pack(side="left", padx=(16, 0))
+
+        # --- Main area: two columns ---
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        content.columnconfigure(0, weight=3)  # Table takes more space
+        content.columnconfigure(1, weight=2)  # Report panel
+        content.rowconfigure(0, weight=1)
+
+        # --- Left column: data table ---
+        table_frame = ctk.CTkFrame(content)
+        table_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(
+            table_frame,
+            text="Dataset preview",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        # Treeview inside a plain tk frame (ttk widget — needs tk parent)
+        tree_container = tk.Frame(table_frame, bg="#2b2b2b")
+        tree_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        self.tree = ttk.Treeview(tree_container, show="headings")
+        vsb = ttk.Scrollbar(
+            tree_container, orient="vertical", command=self.tree.yview
+        )
+        hsb = ttk.Scrollbar(
+            tree_container, orient="horizontal", command=self.tree.xview
+        )
+        self.tree.configure(
+            yscrollcommand=vsb.set, xscrollcommand=hsb.set
+        )
+
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        self.tree.pack(fill="both", expand=True)
+
+        # Placeholder message in table
+        self._show_table_placeholder()
+
+        # --- Right column: HUBA report ---
+        report_frame = ctk.CTkFrame(content)
+        report_frame.grid(row=0, column=1, sticky="nsew")
+
+        ctk.CTkLabel(
+            report_frame,
+            text="HUBA pipeline report",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.report_box = ctk.CTkTextbox(
+            report_frame,
+            font=ctk.CTkFont(family="Courier New", size=11),
+            wrap="none",
+            state="disabled",
+        )
+        self.report_box.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        self._show_report_placeholder()
+
+    def _show_table_placeholder(self) -> None:
+        """Show placeholder text when no dataset is loaded.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # Clear existing columns and insert a single placeholder column
+        self.tree["columns"] = ("info",)
+        self.tree.heading("info", text="")
+        self.tree.column("info", width=400, anchor="center")
+        self.tree.delete(*self.tree.get_children())
+        self.tree.insert("", "end", values=("Load a dataset to preview data.",))
+
+    def _show_report_placeholder(self) -> None:
+        """Show placeholder text in the report panel.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self.report_box.configure(state="normal")
+        self.report_box.delete("1.0", "end")
+        self.report_box.insert(
+            "1.0",
+            "No report loaded.\n\nLoad a dataset to display\nthe HUBA pipeline report.",
+        )
+        self.report_box.configure(state="disabled")
+
+    def _load_dataset(self) -> None:
+        """Open file dialog and load a clean_dataset_*.csv file.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        import pandas as pd
+
+        # File dialog — start in results/tables if it exists
+        initial_dir = str(
+            PROJECT_ROOT / "results" / "tables"
+            if (PROJECT_ROOT / "results" / "tables").exists()
+            else PROJECT_ROOT
+        )
+
+        path = filedialog.askopenfilename(
+            title="Select clean dataset (CSV)",
+            initialdir=initial_dir,
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+        if not path:
+            return  # User cancelled
+
+        try:
+            self.df = pd.read_csv(path)
+            self.dataset_path = Path(path)
+        except Exception as e:
+            messagebox.showerror("Load error", f"Could not load file:\n{e}")
+            return
+
+        # Update dataset label
+        row_count = len(self.df)
+        col_count = len(self.df.columns)
+        self.dataset_label.configure(
+            text=f"{self.dataset_path.name}  —  {row_count} rows, {col_count} columns",
+            text_color=("gray10", "gray90"),
+        )
+
+        # Populate Treeview
+        self._populate_table()
+
+        # Load HUBA report from same results directory
+        self._load_report(self.dataset_path.parent.parent / "REPORT.md")
+
+        # Notify other tabs that data has been loaded
+        self.winfo_toplevel().on_dataset_loaded(self.df)
+
+    def _populate_table(self) -> None:
+        """Fill the Treeview with data from self.df.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # Clear existing data
+        self.tree.delete(*self.tree.get_children())
+
+        # Set columns
+        columns = list(self.df.columns)
+        self.tree["columns"] = columns
+
+        for col in columns:
+            self.tree.heading(
+                col,
+                text=col,
+                command=lambda c=col: self._sort_column(c, False),
+            )
+            # Auto-width: max of header length and first few values
+            col_width = max(
+                len(str(col)) * 10,
+                min(200, max(
+                    (len(str(v)) * 8 for v in self.df[col].head(20)),
+                    default=80,
+                )),
+            )
+            self.tree.column(col, width=col_width, minwidth=60)
+
+        # Insert rows (limit to 500 for performance)
+        display_df = self.df.head(500)
+        for _, row in display_df.iterrows():
+            self.tree.insert("", "end", values=list(row))
+
+        if len(self.df) > 500:
+            self.tree.insert(
+                "", "end",
+                values=["... (showing first 500 rows)"] + [""] * (len(columns) - 1),
+            )
+
+    def _sort_column(self, col: str, reverse: bool) -> None:
+        """Sort Treeview rows by the clicked column header.
+
+        Args:
+            col:     Column name to sort by.
+            reverse: If True, sort descending.
+
+        Returns:
+            None
+        """
+        data = [
+            (self.tree.set(child, col), child)
+            for child in self.tree.get_children("")
+        ]
+
+        try:
+            data.sort(key=lambda t: float(t[0]), reverse=reverse)
+        except ValueError:
+            data.sort(key=lambda t: t[0].lower(), reverse=reverse)
+
+        for index, (_, child) in enumerate(data):
+            self.tree.move(child, "", index)
+
+        # Flip sort direction on next click
+        self.tree.heading(
+            col,
+            command=lambda: self._sort_column(col, not reverse),
+        )
+
+    def _load_report(self, report_path: Path) -> None:
+        """Load and display REPORT.md content in the report panel.
+
+        Args:
+            report_path: Path to the REPORT.md file.
+
+        Returns:
+            None
+        """
+        self.report_box.configure(state="normal")
+        self.report_box.delete("1.0", "end")
+
+        if report_path.exists():
+            text = report_path.read_text(encoding="utf-8")
+            self.report_box.insert("1.0", text)
+        else:
+            self.report_box.insert(
+                "1.0",
+                f"Report not found:\n{report_path}\n\n"
+                "Make sure HUBA has been run and REPORT.md exists.",
+            )
+
+        self.report_box.configure(state="disabled")
+
+
+# ---------------------------------------------------------------------------
+# Tab: Quality Control
+# ---------------------------------------------------------------------------
+
+class QualityControlTab(ctk.CTkFrame):
+    """Quality Control tab — GC%, N%, sequence length analysis."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+
+        self.qc_df = None   # DataFrame with computed QC metrics
+        self._figures = {}  # Stores current Figure objects for popup reuse
+
+        self._build_placeholder()
+
+    def _build_placeholder(self) -> None:
+        """Show a placeholder until data is loaded.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
+
+        ctk.CTkLabel(
+            self._placeholder,
+            text="Quality Control",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(40, 8))
+        ctk.CTkLabel(
+            self._placeholder,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack()
+
+    def load_data(self, df) -> None:
+        """Receive the loaded DataFrame, compute QC metrics and build the UI.
+
+        Args:
+            df: pandas DataFrame with sequence data (must have 'sequence' column).
+
+        Returns:
+            None
+        """
+        import importlib.util as _ilu
+
+        # Load analyzer module from app/src/analyzer.py
+        _ana_path = APP_DIR / "src" / "analyzer.py"
+        _spec = _ilu.spec_from_file_location("analyzer", _ana_path)
+        analyzer = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(analyzer)
+
+        # Load plots module from app/src/plots.py
+        _plt_path = APP_DIR / "src" / "plots.py"
+        _spec2 = _ilu.spec_from_file_location("plots", _plt_path)
+        plots = _ilu.module_from_spec(_spec2)
+        _spec2.loader.exec_module(plots)
+
+        # Compute QC metrics
+        try:
+            self.qc_df = analyzer.run_quality_analysis(df)
+            self.qc_df = analyzer.flag_outliers(
+                self.qc_df,
+                gc_low=config.GC_LOW_THRESHOLD,
+                gc_high=config.GC_HIGH_THRESHOLD,
+                n_warning=config.N_WARNING_THRESHOLD,
+            )
+        except Exception as e:
+            messagebox.showerror("QC Error", f"Could not compute QC metrics:\n{e}")
+            return
+
+        # Remove placeholder and build full UI
+        self._placeholder.destroy()
+        self._build_ui(plots, analyzer)
+
+    def _build_ui(self, plots, analyzer) -> None:
+        """Build the full Quality Control UI with table and plots.
+
+        Args:
+            plots:    Loaded plots module (app/src/plots.py).
+            analyzer: Loaded analyzer module (app/src/analyzer.py).
+
+        Returns:
+            None
+        """
+        # --- Summary stats bar at the top ---
+        summary = analyzer.compute_summary_stats(self.qc_df)
+
+        stats_bar = ctk.CTkFrame(self, height=52)
+        stats_bar.pack(fill="x", padx=16, pady=(12, 0))
+        stats_bar.pack_propagate(False)
+
+        stat_items = [
+            ("Sequences", str(len(self.qc_df))),
+            ("Mean GC%", f"{summary.loc['GC content', 'Mean'] * 100:.1f}%"),
+            ("Mean N%",  f"{summary.loc['N content', 'Mean'] * 100:.2f}%"),
+            ("Mean length", f"{summary.loc['Length (bp)', 'Mean']:.0f} bp"),
+            ("Flagged", str((self.qc_df["qc_flag"] != "OK").sum())),
+        ]
+
+        for label, value in stat_items:
+            box = ctk.CTkFrame(stats_bar, fg_color="transparent")
+            box.pack(side="left", padx=20, pady=6)
+            ctk.CTkLabel(
+                box, text=value,
+                font=ctk.CTkFont(size=15, weight="bold"),
+            ).pack()
+            ctk.CTkLabel(
+                box, text=label,
+                font=ctk.CTkFont(size=10),
+                text_color="gray",
+            ).pack()
+
+        # --- Main area: left = table, right = plots ---
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=(8, 16))
+        content.columnconfigure(0, weight=2)
+        content.columnconfigure(1, weight=3)
+        content.rowconfigure(0, weight=1)
+
+        # --- Left: QC metrics table ---
+        table_frame = ctk.CTkFrame(content)
+        table_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(
+            table_frame,
+            text="Sequence metrics",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        tree_container = tk.Frame(table_frame)
+        tree_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        cols = ["id", "length", "gc_content", "n_content", "qc_flag"]
+        self.qc_tree = ttk.Treeview(
+            tree_container, columns=cols, show="headings"
+        )
+
+        headers = {
+            "id": "ID",
+            "length": "Length (bp)",
+            "gc_content": "GC%",
+            "n_content": "N%",
+            "qc_flag": "Flag",
+        }
+        widths = {"id": 130, "length": 80, "gc_content": 70,
+                  "n_content": 60, "qc_flag": 80}
+
+        for col in cols:
+            self.qc_tree.heading(
+                col, text=headers[col],
+                command=lambda c=col: self._sort_qc(c, False),
+            )
+            self.qc_tree.column(col, width=widths[col], minwidth=50)
+
+        vsb = ttk.Scrollbar(
+            tree_container, orient="vertical", command=self.qc_tree.yview
+        )
+        self.qc_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.qc_tree.pack(fill="both", expand=True)
+
+        # Populate rows
+        for _, row in self.qc_df.iterrows():
+            flag = row.get("qc_flag", "OK")
+            tag = "flagged" if flag != "OK" else "ok"
+            self.qc_tree.insert(
+                "", "end",
+                values=[
+                    row["id"],
+                    int(row["length"]),
+                    f"{row['gc_content'] * 100:.1f}%",
+                    f"{row['n_content'] * 100:.2f}%",
+                    flag,
+                ],
+                tags=(tag,),
+            )
+
+        # Tag colors: flagged rows in light orange
+        self.qc_tree.tag_configure("flagged", background="#FFF3E0")
+        self.qc_tree.tag_configure("ok", background="")
+
+        # --- Right: plots panel ---
+        plots_frame = ctk.CTkFrame(content)
+        plots_frame.grid(row=0, column=1, sticky="nsew")
+
+        ctk.CTkLabel(
+            plots_frame,
+            text="Visualizations",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        # Scrollable area for plot thumbnails + buttons
+        scroll = ctk.CTkScrollableFrame(plots_frame)
+        scroll.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        plot_specs = [
+            ("GC Content Distribution",  plots.plot_gc_distribution),
+            ("GC Content by Gene",        plots.plot_gc_boxplot),
+            ("Sequence Length Distribution", plots.plot_length_distribution),
+            ("GC% vs. Length",            plots.plot_gc_vs_length),
+            ("N Content Distribution",    plots.plot_n_content),
+        ]
+
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        for title, plot_fn in plot_specs:
+            card = ctk.CTkFrame(scroll)
+            card.pack(fill="x", pady=(0, 10))
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w",
+            ).pack(anchor="w", padx=10, pady=(8, 4))
+
+            # Generate figure and embed thumbnail
+            fig = plot_fn(self.qc_df)
+            self._figures[title] = fig
+
+            thumb_frame = tk.Frame(card)
+            thumb_frame.pack(fill="x", padx=10)
+
+            canvas = FigureCanvasTkAgg(fig, master=thumb_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="x")
+
+            # "Open in window" button
+            ctk.CTkButton(
+                card,
+                text="⤢  Open in window",
+                height=28,
+                width=160,
+                font=ctk.CTkFont(size=11),
+                fg_color="transparent",
+                border_width=1,
+                text_color=("gray20", "gray80"),
+                hover_color=("gray85", "gray25"),
+                command=lambda t=title: plots.open_plot_window(
+                    self._figures[t], title=t
+                ),
+            ).pack(anchor="e", padx=10, pady=(4, 8))
+
+    def _sort_qc(self, col: str, reverse: bool) -> None:
+        """Sort QC Treeview by clicked column header.
+
+        Args:
+            col:     Column name to sort by.
+            reverse: Sort direction.
+
+        Returns:
+            None
+        """
+        data = [
+            (self.qc_tree.set(child, col), child)
+            for child in self.qc_tree.get_children("")
+        ]
+        try:
+            data.sort(key=lambda t: float(t[0].rstrip("%")), reverse=reverse)
+        except ValueError:
+            data.sort(key=lambda t: t[0].lower(), reverse=reverse)
+
+        for index, (_, child) in enumerate(data):
+            self.qc_tree.move(child, "", index)
+
+        self.qc_tree.heading(
+            col, command=lambda: self._sort_qc(col, not reverse)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tab: Motif Analysis (placeholder)
+# ---------------------------------------------------------------------------
+
+class MotifAnalysisTab(ctk.CTkFrame):
+    """Motif Analysis tab — predefined and custom motif search."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._build_placeholder()
+
+    def _build_placeholder(self) -> None:
+        """Show a placeholder until data is loaded and module is implemented.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        ctk.CTkLabel(
+            self,
+            text="Motif Analysis",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(40, 8))
+        ctk.CTkLabel(
+            self,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack()
+
+    def load_data(self, df) -> None:
+        """Receive the loaded DataFrame from HomeTab.
+
+        Args:
+            df: pandas DataFrame with sequence data.
+
+        Returns:
+            None
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Tab: ORF Analysis (placeholder)
+# ---------------------------------------------------------------------------
+
+class ORFAnalysisTab(ctk.CTkFrame):
+    """ORF Analysis tab — open reading frame identification."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._build_placeholder()
+
+    def _build_placeholder(self) -> None:
+        """Show a placeholder until data is loaded and module is implemented.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        ctk.CTkLabel(
+            self,
+            text="ORF Analysis",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(40, 8))
+        ctk.CTkLabel(
+            self,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack()
+
+    def load_data(self, df) -> None:
+        """Receive the loaded DataFrame from HomeTab.
+
+        Args:
+            df: pandas DataFrame with sequence data.
+
+        Returns:
+            None
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Tab: Statistics (placeholder)
+# ---------------------------------------------------------------------------
+
+class StatisticsTab(ctk.CTkFrame):
+    """Statistics tab — statistical tests and correlation matrix."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._build_placeholder()
+
+    def _build_placeholder(self) -> None:
+        """Show a placeholder until data is loaded and module is implemented.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        ctk.CTkLabel(
+            self,
+            text="Statistics",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(40, 8))
+        ctk.CTkLabel(
+            self,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack()
+
+    def load_data(self, df) -> None:
+        """Receive the loaded DataFrame from HomeTab.
+
+        Args:
+            df: pandas DataFrame with sequence data.
+
+        Returns:
+            None
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Tab: Report (placeholder)
+# ---------------------------------------------------------------------------
+
+class ReportTab(ctk.CTkFrame):
+    """Report tab — generate and export analysis report."""
+
+    def __init__(self, parent: ctk.CTkTabview) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._build_placeholder()
+
+    def _build_placeholder(self) -> None:
+        """Show a placeholder until data is loaded and module is implemented.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        ctk.CTkLabel(
+            self,
+            text="Report",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(40, 8))
+        ctk.CTkLabel(
+            self,
+            text="Load a dataset in the Home tab to enable report generation.",
+            font=ctk.CTkFont(size=13),
+            text_color="gray",
+        ).pack()
+
+    def load_data(self, df) -> None:
+        """Receive the loaded DataFrame from HomeTab.
+
+        Args:
+            df: pandas DataFrame with sequence data.
+
+        Returns:
+            None
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Main application window
+# ---------------------------------------------------------------------------
+
+class BioSeqExplorerApp(ctk.CTk):
+    """Main BioSeq Explorer application window."""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # --- Window setup ---
+        self.title(config.APP_TITLE)
+        self.geometry(
+            f"{config.WINDOW_WIDTH}x{config.WINDOW_HEIGHT}"
+        )
+        self.minsize(config.MIN_WINDOW_WIDTH, config.MIN_WINDOW_HEIGHT)
+
+        # Center on screen
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() - config.WINDOW_WIDTH) // 2
+        y = (self.winfo_screenheight() - config.WINDOW_HEIGHT) // 2
+        self.geometry(
+            f"{config.WINDOW_WIDTH}x{config.WINDOW_HEIGHT}+{x}+{y}"
+        )
+
+        # Apply Treeview styling before building UI
+        apply_treeview_style()
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the main window layout with tab navigation.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Header bar ---
+        header = ctk.CTkFrame(self, height=48, corner_radius=0)
+        header.pack(fill="x", side="top")
+        header.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header,
+            text="BioSeq Explorer",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            anchor="w",
+        ).pack(side="left", padx=20, pady=8)
+
+        ctk.CTkLabel(
+            header,
+            text="Bioinformatics analysis platform",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            anchor="w",
+        ).pack(side="left", padx=(0, 20), pady=8)
+
+        # --- Tab view ---
+        self.tabs = ctk.CTkTabview(
+            self,
+            anchor="nw",
+        )
+        self.tabs.pack(fill="both", expand=True, padx=16, pady=(8, 16))
+
+        # Create all tabs
+        tab_names = [
+            "🏠  Home",
+            "🔬  Quality Control",
+            "🔍  Motif Analysis",
+            "🧬  ORF Analysis",
+            "📊  Statistics",
+            "📄  Report",
+        ]
+        for name in tab_names:
+            self.tabs.add(name)
+
+        # Instantiate tab content frames
+        self.home_tab = HomeTab(self.tabs.tab("🏠  Home"))
+        self.home_tab.pack(fill="both", expand=True)
+
+        self.qc_tab = QualityControlTab(self.tabs.tab("🔬  Quality Control"))
+        self.qc_tab.pack(fill="both", expand=True)
+
+        self.motif_tab = MotifAnalysisTab(self.tabs.tab("🔍  Motif Analysis"))
+        self.motif_tab.pack(fill="both", expand=True)
+
+        self.orf_tab = ORFAnalysisTab(self.tabs.tab("🧬  ORF Analysis"))
+        self.orf_tab.pack(fill="both", expand=True)
+
+        self.stats_tab = StatisticsTab(self.tabs.tab("📊  Statistics"))
+        self.stats_tab.pack(fill="both", expand=True)
+
+        self.report_tab = ReportTab(self.tabs.tab("📄  Report"))
+        self.report_tab.pack(fill="both", expand=True)
+
+        # Set default tab
+        self.tabs.set("🏠  Home")
+
+    def on_dataset_loaded(self, df) -> None:
+        """Propagate the loaded DataFrame to all analysis tabs.
+
+        Called by HomeTab after a dataset is successfully loaded.
+
+        Args:
+            df: pandas DataFrame with sequence data.
+
+        Returns:
+            None
+        """
+        self.qc_tab.load_data(df)
+        self.motif_tab.load_data(df)
+        self.orf_tab.load_data(df)
+        self.stats_tab.load_data(df)
+        self.report_tab.load_data(df)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app = BioSeqExplorerApp()
+    app.mainloop()
