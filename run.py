@@ -185,14 +185,14 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         super().__init__(parent)
 
         self.title("Run HUBA Pipeline")
-        self.geometry("460x580")
+        self.geometry("460x640")
         self.resizable(False, False)
 
         # Center on screen
         self.update_idletasks()
         x = (self.winfo_screenwidth() - 460) // 2
-        y = (self.winfo_screenheight() - 580) // 2
-        self.geometry(f"460x580+{x}+{y}")
+        y = (self.winfo_screenheight() - 640) // 2
+        self.geometry(f"460x640+{x}+{y}")
 
         # Variant checkboxes state
         self.var_a = ctk.BooleanVar(value=True)
@@ -332,7 +332,7 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color="gray",
         ).pack()
 
-        # Dry Run button
+        # Load Raw Files button
         dry_btn_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
         dry_btn_frame.pack(fill="x", pady=(0, 6))
 
@@ -351,6 +351,7 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color="gray",
         ).pack()
 
+        # Close button
         ctk.CTkButton(
             btn_frame,
             text="Close",
