@@ -185,14 +185,19 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         super().__init__(parent)
 
         self.title("Run HUBA Pipeline")
-        self.geometry("400x520")
+        self.geometry("420x560")
         self.resizable(False, False)
 
         # Center on screen
         self.update_idletasks()
-        x = (self.winfo_screenwidth() - 400) // 2
-        y = (self.winfo_screenheight() - 520) // 2
-        self.geometry(f"400x520+{x}+{y}")
+        x = (self.winfo_screenwidth() - 420) // 2
+        y = (self.winfo_screenheight() - 560) // 2
+        self.geometry(f"420x560+{x}+{y}")
+
+        # Checkboxes state for variants
+        self.var_a = ctk.BooleanVar(value=True)
+        self.var_b = ctk.BooleanVar(value=True)
+        self.var_c = ctk.BooleanVar(value=False)
 
         self._build_ui()
 
@@ -207,48 +212,83 @@ class HubaRunnerWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             self,
-            text="Select how to run the data preparation pipeline:",
+            text="Select variants and run mode:",
             font=ctk.CTkFont(size=12),
             text_color="gray",
-        ).pack(pady=(0, 20))
+        ).pack(pady=(0, 16))
 
-        # --- Mode buttons ---
-        modes = [
-            ("--all", "Run all variants (A, B, C)",
-             "Process all files with all filter variants"),
-            ("--variant A", "Run variant A only",
-             "Lenient filter (min_len=10, max_n=50%)"),
-            ("--variant B", "Run variant B only",
-             "Standard filter (min_len=20, max_n=20%)"),
-            ("--variant C", "Run variant C only",
-             "Strict filter (min_len=50, max_n=5%)"),
-            ("--select", "Select files interactively",
-             "Choose which files to process"),
-            ("--dry-run", "Dry run (load only)",
-             "Load files and show stats — no filtering"),
+        # --- Variant checkboxes ---
+        variants_frame = ctk.CTkFrame(self)
+        variants_frame.pack(fill="x", padx=24, pady=(0, 16))
+
+        ctk.CTkLabel(
+            variants_frame,
+            text="Filter variants:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(anchor="w", padx=16, pady=(12, 4))
+
+        variants = [
+            (self.var_a, "Variant A", "Lenient  (min_len=10, max_n=50%)"),
+            (self.var_b, "Variant B", "Standard (min_len=20, max_n=20%)"),
+            (self.var_c, "Variant C", "Strict   (min_len=50, max_n=5%)"),
         ]
 
-        for flag, label, description in modes:
-            frame = ctk.CTkFrame(self, fg_color="transparent")
-            frame.pack(fill="x", padx=20, pady=4)
+        for var, label, description in variants:
+            row = ctk.CTkFrame(variants_frame, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=2)
 
-            ctk.CTkButton(
-                frame,
+            ctk.CTkCheckBox(
+                row,
                 text=label,
-                width=180,
-                height=36,
+                variable=var,
                 font=ctk.CTkFont(size=13),
-                command=lambda f=flag: self._run(f),
+                width=120,
             ).pack(side="left")
 
             ctk.CTkLabel(
-                frame,
+                row,
                 text=description,
                 font=ctk.CTkFont(size=11),
                 text_color="gray",
-                wraplength=160,
-                justify="left",
-            ).pack(side="left", padx=(12, 0))
+            ).pack(side="left", padx=(8, 0))
+
+        # --- File selection ---
+        ctk.CTkLabel(
+            self,
+            text="File selection:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).pack(anchor="w", padx=24, pady=(0, 4))
+
+        self.select_files_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            self,
+            text="Select files interactively (--select)",
+            variable=self.select_files_var,
+            font=ctk.CTkFont(size=13),
+        ).pack(anchor="w", padx=24, pady=(0, 16))
+
+        # --- Run buttons ---
+        ctk.CTkButton(
+            self,
+            text="▶  Run Pipeline",
+            width=280,
+            height=44,
+            font=ctk.CTkFont(size=14),
+            command=self._run_selected,
+        ).pack(pady=(0, 8))
+
+        ctk.CTkButton(
+            self,
+            text="⚡  Dry Run (load only)",
+            width=280,
+            height=36,
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray30", "gray70"),
+            hover_color=("gray85", "gray25"),
+            command=lambda: self._run("--dry-run"),
+        ).pack(pady=(0, 8))
 
         # --- Status label ---
         self.status_label = ctk.CTkLabel(
@@ -256,26 +296,64 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text="",
             font=ctk.CTkFont(size=12),
             text_color="gray",
-            wraplength=340,
+            wraplength=360,
             justify="center",
         )
-        self.status_label.pack(pady=(20, 0))
+        self.status_label.pack(pady=(4, 0))
 
         # --- Close button ---
         ctk.CTkButton(
             self,
             text="Close",
-            width=160,
+            width=280,
             height=36,
             fg_color="transparent",
             border_width=1,
             text_color=("gray30", "gray70"),
             hover_color=("gray85", "gray25"),
             command=self.destroy,
-        ).pack(pady=(16, 0))
+        ).pack(pady=(8, 16))
+
+    def _run_selected(self) -> None:
+        """Build the command based on selected variants and run."""
+
+        # Collect selected variants
+        selected = []
+        if self.var_a.get():
+            selected.append("A")
+        if self.var_b.get():
+            selected.append("B")
+        if self.var_c.get():
+            selected.append("C")
+
+        if not selected:
+            self.status_label.configure(
+                text="Please select at least one variant.",
+                text_color="orange",
+            )
+            return
+
+        # Build command
+        if set(selected) == {"A", "B", "C"}:
+            # All three selected — use --all
+            flag = "--all"
+        elif len(selected) == 1:
+            # Single variant
+            flag = f"--variant {selected[0]}"
+        else:
+            # Multiple but not all — run each separately
+            # We run --variant for each selected variant
+            flag = " ".join(f"--variant {v}" for v in selected)
+
+        # Add --select flag if checked
+        if self.select_files_var.get():
+            flag = "--select " + flag.split()[0] if len(selected) == 1 \
+                else "--select --all"
+
+        self._run(flag)
 
     def _run(self, flag: str) -> None:
-        """Run HUBA with the selected flag in a new terminal window."""
+        """Run HUBA with the given flag in a new terminal window."""
         self.status_label.configure(
             text=f"Running HUBA {flag}...\nCheck the terminal window.",
             text_color="blue",
@@ -283,7 +361,6 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         self.update()
 
         try:
-            # Open a new terminal window running HUBA
             subprocess.Popen(
                 ["cmd", "/c", "start", "cmd", "/k",
                  f"{sys.executable} main.py {flag}"],
