@@ -267,7 +267,15 @@ class HomeTab(ctk.CTkFrame):
         self._load_report(self.dataset_path.parent.parent / "REPORT.md")
 
         # Notify other tabs that data has been loaded
-        self.winfo_toplevel().on_dataset_loaded(self.df)
+        app = self.winfo_toplevel()
+        app.on_dataset_loaded(self.df)
+
+        # Pass dataset metadata to ReportTab
+        huba_loaded = (self.dataset_path.parent.parent / "REPORT.md").exists()
+        app.report_tab.set_dataset_info(
+            dataset_path=str(self.dataset_path),
+            huba_loaded=huba_loaded,
+        )
 
     def _populate_table(self) -> None:
         """Fill the Treeview with data from self.df.
@@ -742,8 +750,9 @@ class StatisticsTab(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
 
         self.qc_df = None
-        self._stats = None   # Loaded stats module
-        self._plots = None   # Loaded plots module
+        self._stats = None
+        self._plots = None
+        self._last_results = []
 
         self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
         self._placeholder.pack(fill="both", expand=True)
@@ -1045,6 +1054,10 @@ class StatisticsTab(ctk.CTkFrame):
                 self.group_a_var.get(), self.group_b_var.get(),
             )
 
+        # Store result for ReportTab
+        if "error" not in result:
+            self._last_results = [result]
+
         # Show interpretation
         if "error" in result:
             self.result_label.configure(
@@ -1138,7 +1151,7 @@ class StatisticsTab(ctk.CTkFrame):
 
 
 # ---------------------------------------------------------------------------
-# Tab: Report (placeholder)
+# Tab: Report
 # ---------------------------------------------------------------------------
 
 class ReportTab(ctk.CTkFrame):
@@ -1146,31 +1159,36 @@ class ReportTab(ctk.CTkFrame):
 
     def __init__(self, parent: ctk.CTkTabview) -> None:
         super().__init__(parent, fg_color="transparent")
-        self._build_placeholder()
 
-    def _build_placeholder(self) -> None:
-        """Show a placeholder until data is loaded and module is implemented.
+        self.qc_df = None
+        self.summary_df = None
+        self.gene_df = None
+        self.dataset_path = ""
+        self.huba_report_loaded = False
+        self._report_module = None
+        self._analyzer = None
+        self._plots = None
+        self._stats = None
+        self._corr_fig = None       # Injected from StatisticsTab if available
+        self._stat_results = []     # Injected from StatisticsTab if available
 
-        Args:
-            None
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
 
-        Returns:
-            None
-        """
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Report",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(40, 8))
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Load a dataset in the Home tab to enable report generation.",
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
 
     def load_data(self, df) -> None:
-        """Receive the loaded DataFrame from HomeTab.
+        """Receive DataFrame, prepare data and build the Report UI.
 
         Args:
             df: pandas DataFrame with sequence data.
@@ -1178,7 +1196,247 @@ class ReportTab(ctk.CTkFrame):
         Returns:
             None
         """
-        pass
+        import importlib.util as _ilu
+
+        # Load required modules
+        for mod_name, rel_path, attr in [
+            ("analyzer", "src/analyzer.py", "_analyzer"),
+            ("plots",    "src/plots.py",    "_plots"),
+            ("stats",    "src/stats.py",    "_stats"),
+            ("report",   "src/report.py",   "_report_module"),
+        ]:
+            path = APP_DIR / rel_path
+            spec = _ilu.spec_from_file_location(mod_name, path)
+            mod = _ilu.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            setattr(self, attr, mod)
+
+        # Compute QC metrics
+        try:
+            self.qc_df = self._analyzer.run_quality_analysis(df)
+            self.qc_df = self._analyzer.flag_outliers(
+                self.qc_df,
+                gc_low=config.GC_LOW_THRESHOLD,
+                gc_high=config.GC_HIGH_THRESHOLD,
+                n_warning=config.N_WARNING_THRESHOLD,
+            )
+            self.summary_df = self._analyzer.compute_summary_stats(self.qc_df)
+            self.gene_df = self._analyzer.compute_gene_stats(self.qc_df)
+        except Exception as e:
+            messagebox.showerror("Report Error", f"Could not prepare data:\n{e}")
+            return
+
+        self._placeholder.destroy()
+        self._build_ui()
+
+    def set_dataset_info(self, dataset_path: str, huba_loaded: bool) -> None:
+        """Set dataset metadata for use in the report header.
+
+        Called by HomeTab after loading a dataset.
+
+        Args:
+            dataset_path: Path string of the loaded CSV file.
+            huba_loaded:  Whether HUBA REPORT.md was loaded.
+
+        Returns:
+            None
+        """
+        self.dataset_path = dataset_path
+        self.huba_report_loaded = huba_loaded
+
+    def _build_ui(self) -> None:
+        """Build the full Report tab UI.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Top: generate button + status ---
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=16, pady=(16, 8))
+
+        ctk.CTkLabel(
+            top,
+            text="Generate Report",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(side="left")
+
+        self.status_label = ctk.CTkLabel(
+            top,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+        )
+        self.status_label.pack(side="left", padx=(16, 0))
+
+        # --- Options frame ---
+        options = ctk.CTkFrame(self)
+        options.pack(fill="x", padx=16, pady=(0, 12))
+
+        ctk.CTkLabel(
+            options,
+            text="Output directory:",
+            font=ctk.CTkFont(size=12),
+        ).grid(row=0, column=0, padx=(12, 8), pady=10, sticky="w")
+
+        self.output_dir_var = ctk.StringVar(
+            value=str(PROJECT_ROOT / "results" / "app_output")
+        )
+        ctk.CTkEntry(
+            options,
+            textvariable=self.output_dir_var,
+            width=380,
+            font=ctk.CTkFont(size=11),
+        ).grid(row=0, column=1, padx=(0, 8), pady=10)
+
+        ctk.CTkButton(
+            options,
+            text="Browse",
+            width=80,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            command=self._browse_output_dir,
+        ).grid(row=0, column=2, padx=(0, 12), pady=10)
+
+        # Include stat results checkbox
+        self.include_stats_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            options,
+            text="Include statistical test results (if any were run in Statistics tab)",
+            variable=self.include_stats_var,
+            font=ctk.CTkFont(size=12),
+        ).grid(row=1, column=0, columnspan=3, padx=12, pady=(0, 10), sticky="w")
+
+        # --- Generate button ---
+        ctk.CTkButton(
+            self,
+            text="📄  Generate Report",
+            height=44,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self._generate,
+        ).pack(fill="x", padx=16, pady=(0, 8))
+
+        # --- Preview area ---
+        ctk.CTkLabel(
+            self,
+            text="Report preview",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=16, pady=(4, 4))
+
+        self.preview_box = ctk.CTkTextbox(
+            self,
+            font=ctk.CTkFont(family="Courier New", size=11),
+            wrap="none",
+            state="disabled",
+        )
+        self.preview_box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
+        self._show_preview_placeholder()
+
+    def _browse_output_dir(self) -> None:
+        """Open directory dialog to choose report output location.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        from tkinter import filedialog
+        path = filedialog.askdirectory(
+            title="Select output directory",
+            initialdir=self.output_dir_var.get(),
+        )
+        if path:
+            self.output_dir_var.set(path)
+
+    def _show_preview_placeholder(self) -> None:
+        """Show placeholder text in the preview box.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self.preview_box.configure(state="normal")
+        self.preview_box.delete("1.0", "end")
+        self.preview_box.insert(
+            "1.0",
+            "Click 'Generate Report' to create the report.\n\n"
+            "The report will be saved as:\n"
+            f"  <output_dir>/bioseq_report.md\n\n"
+            "All plots will be saved as PNG files in:\n"
+            f"  <output_dir>/report_plots/",
+        )
+        self.preview_box.configure(state="disabled")
+
+    def _generate(self) -> None:
+        """Generate the report and display a preview.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        output_dir = Path(self.output_dir_var.get())
+
+        # Collect stat results from Statistics tab if requested
+        stat_results = []
+        if self.include_stats_var.get():
+            stat_results = self._stat_results
+
+        # Get correlation figure from Statistics tab if available
+        corr_fig = self._corr_fig
+
+        self.status_label.configure(
+            text="Generating report...", text_color="gray"
+        )
+        self.update()
+
+        try:
+            report_path = self._report_module.generate_report(
+                qc_df=self.qc_df,
+                summary_df=self.summary_df,
+                gene_df=self.gene_df,
+                plots_module=self._plots,
+                output_dir=output_dir,
+                dataset_path=self.dataset_path,
+                huba_report_loaded=self.huba_report_loaded,
+                stat_results=stat_results,
+                corr_fig=corr_fig,
+            )
+        except Exception as e:
+            self.status_label.configure(
+                text=f"Error: {e}", text_color="red"
+            )
+            messagebox.showerror("Report Error", f"Could not generate report:\n{e}")
+            return
+
+        self.status_label.configure(
+            text=f"✓ Saved to: {report_path}",
+            text_color="green",
+        )
+
+        # Show preview of generated report
+        try:
+            content = report_path.read_text(encoding="utf-8")
+            self.preview_box.configure(state="normal")
+            self.preview_box.delete("1.0", "end")
+            self.preview_box.insert("1.0", content)
+            self.preview_box.configure(state="disabled")
+        except Exception:
+            pass
+
+        messagebox.showinfo(
+            "Report generated",
+            f"Report saved successfully:\n{report_path}\n\n"
+            f"Plots saved to:\n{output_dir / 'report_plots'}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1297,6 +1555,12 @@ class BioSeqExplorerApp(ctk.CTk):
         self.orf_tab.load_data(df)
         self.stats_tab.load_data(df)
         self.report_tab.load_data(df)
+
+        # Share correlation figure and stat results with ReportTab
+        # StatisticsTab stores these after the user runs tests;
+        # ReportTab reads them at generation time via direct attribute access.
+        self.report_tab._corr_fig = getattr(self.stats_tab, "_corr_fig", None)
+        self.report_tab._stat_results = getattr(self.stats_tab, "_last_results", [])
 
 
 # ---------------------------------------------------------------------------
