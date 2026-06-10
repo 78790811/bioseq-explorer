@@ -199,9 +199,8 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         self.var_b = ctk.BooleanVar(value=True)
         self.var_c = ctk.BooleanVar(value=False)
 
-        # File selection state
-        self.all_files_var = ctk.BooleanVar(value=True)
-        self.select_files_var = ctk.BooleanVar(value=False)
+        # File selection mode (radio buttons)
+        self.file_mode = ctk.StringVar(value="all")
 
         self._build_ui()
 
@@ -261,7 +260,7 @@ class HubaRunnerWindow(ctk.CTkToplevel):
                 text_color="gray",
             ).pack(side="left", padx=(8, 0), pady=4)
 
-        # --- Section 2: File selection ---
+        # --- Section 2: File selection (radio-style) ---
         ctk.CTkLabel(
             main_frame,
             text="2.  Select input files:",
@@ -271,23 +270,26 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         files_frame = ctk.CTkFrame(main_frame)
         files_frame.pack(fill="x", padx=16, pady=(0, 12))
 
+        # Use radio buttons for mutually exclusive file selection
+        self.file_mode = ctk.StringVar(value="all")
+
         file_options = [
-            (self.all_files_var, "All files",
+            ("all", "All files",
              "Process all files in source/ directory"),
-            (self.select_files_var, "Select files interactively",
+            ("select", "Select interactively",
              "Choose which files to process (--select)"),
         ]
 
-        for var, label, description in file_options:
+        for value, label, description in file_options:
             row = ctk.CTkFrame(files_frame, fg_color="transparent")
             row.pack(fill="x", padx=12, pady=3)
-            ctk.CTkCheckBox(
+            ctk.CTkRadioButton(
                 row,
                 text=label,
-                variable=var,
+                variable=self.file_mode,
+                value=value,
                 font=ctk.CTkFont(size=13),
-                width=200,
-                command=self._on_file_selection_changed,
+                width=160,
             ).pack(side="left")
             ctk.CTkLabel(
                 row,
@@ -311,21 +313,43 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(fill="x", padx=20)
 
+        # Run Pipeline button
+        run_btn_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        run_btn_frame.pack(fill="x", pady=(0, 6))
+
         ctk.CTkButton(
-            btn_frame,
+            run_btn_frame,
             text="▶  Run Pipeline",
             height=44,
             font=ctk.CTkFont(size=14, weight="bold"),
             command=self._run_selected,
-        ).pack(fill="x", pady=(0, 6))
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            run_btn_frame,
+            text="Process files with selected variants and options",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack()
+
+        # Dry Run button
+        dry_btn_frame = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        dry_btn_frame.pack(fill="x", pady=(0, 6))
 
         ctk.CTkButton(
-            btn_frame,
-            text="⚡  Dry Run — load files and show stats, no filtering",
-            height=40,
-            font=ctk.CTkFont(size=12),
+            dry_btn_frame,
+            text="⚡  Load Raw Files",
+            height=44,
+            font=ctk.CTkFont(size=14, weight="bold"),
             command=lambda: self._run("--dry-run"),
-        ).pack(fill="x", pady=(0, 6))
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            dry_btn_frame,
+            text="Load and preview files only — no filtering or saving",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack()
 
         ctk.CTkButton(
             btn_frame,
@@ -337,7 +361,7 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color=("gray30", "gray70"),
             hover_color=("gray85", "gray25"),
             command=self.destroy,
-        ).pack(fill="x")
+        ).pack(fill="x", pady=(4, 0))
 
     def _on_file_selection_changed(self) -> None:
         """Ensure at least one file selection option is always checked."""
@@ -369,16 +393,12 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         elif len(selected) == 1:
             variant_flag = f"--variant {selected[0]}"
         else:
-            # Multiple variants — run --all and note which are active
-            # (config.py controls which variants actually run)
             variant_flag = "--all"
 
         # Build file flag
-        if self.select_files_var.get():
-            file_flag = "--select"
-            # --select mode runs all variants interactively
-            flag = f"{file_flag} {variant_flag}" \
-                if variant_flag != "--all" else file_flag
+        if self.file_mode.get() == "select":
+            flag = f"--select {variant_flag}" \
+                if variant_flag != "--all" else "--select"
         else:
             flag = variant_flag
 
