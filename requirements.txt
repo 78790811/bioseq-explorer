@@ -3,3 +3,4 @@ biopython>=1.83
 pandas>=2.0
 numpy>=1.26
 scipy>=1.11
+customtkinter>=5.2.2
