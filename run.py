@@ -185,14 +185,14 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         super().__init__(parent)
 
         self.title("Run HUBA Pipeline")
-        self.geometry("400x420")
+        self.geometry("400x520")
         self.resizable(False, False)
 
         # Center on screen
         self.update_idletasks()
         x = (self.winfo_screenwidth() - 400) // 2
-        y = (self.winfo_screenheight() - 420) // 2
-        self.geometry(f"400x420+{x}+{y}")
+        y = (self.winfo_screenheight() - 520) // 2
+        self.geometry(f"400x520+{x}+{y}")
 
         self._build_ui()
 
@@ -215,7 +215,13 @@ class HubaRunnerWindow(ctk.CTkToplevel):
         # --- Mode buttons ---
         modes = [
             ("--all", "Run all variants (A, B, C)",
-             "Process all files in source/ with all filter variants"),
+             "Process all files with all filter variants"),
+            ("--variant A", "Run variant A only",
+             "Lenient filter (min_len=10, max_n=50%)"),
+            ("--variant B", "Run variant B only",
+             "Standard filter (min_len=20, max_n=20%)"),
+            ("--variant C", "Run variant C only",
+             "Strict filter (min_len=50, max_n=5%)"),
             ("--select", "Select files interactively",
              "Choose which files to process"),
             ("--dry-run", "Dry run (load only)",
