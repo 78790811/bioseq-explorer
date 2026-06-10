@@ -483,35 +483,35 @@ def main() -> None:
             return
         print(f"\nProcessing {len(selected_files)} selected file(s)...")
 
-        # --- Create results directories and clean previous results ---
-        results_dir = config.RESULTS_DIR
-        results_dir.mkdir(parents=True, exist_ok=True)
+    # --- Create results directories and clean previous results ---
+    results_dir = config.RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
 
-        tables_dir = results_dir / "tables"
-        plots_dir = results_dir / "plots"
+    tables_dir = results_dir / "tables"
+    plots_dir = results_dir / "plots"
 
-        # Remove all CSV files from previous pipeline run
-        if tables_dir.exists():
-            for old_file in tables_dir.glob("*.csv"):
-                old_file.unlink()
-                print(f"  Removed old result: {old_file.name}")
+    # Remove all CSV files from previous pipeline run
+    if tables_dir.exists():
+        for old_file in tables_dir.glob("*.csv"):
+            old_file.unlink()
+            print(f"  Removed old result: {old_file.name}")
 
-        # Remove all PNG plots from previous pipeline run
-        if plots_dir.exists():
-            for old_file in plots_dir.glob("*.png"):
-                old_file.unlink()
-                print(f"  Removed old plot: {old_file.name}")
+    # Remove all PNG plots from previous pipeline run
+    if plots_dir.exists():
+        for old_file in plots_dir.glob("*.png"):
+            old_file.unlink()
+            print(f"  Removed old plot: {old_file.name}")
 
-        # Remove old report if exists
-        old_report = results_dir / "REPORT.md"
-        if old_report.exists():
-            old_report.unlink()
+    # Remove old report if exists
+    old_report = results_dir / "REPORT.md"
+    if old_report.exists():
+        old_report.unlink()
 
-        # Recreate directories
-        tables_dir.mkdir(exist_ok=True)
-        plots_dir.mkdir(exist_ok=True)
+    # Recreate directories
+    tables_dir.mkdir(exist_ok=True)
+    plots_dir.mkdir(exist_ok=True)
 
-        print("  Results directory cleared.")
+    print("  Results directory cleared.")
 
     # --- Step 1: Load all input files ---
     # In --select mode, load only the files chosen by the user
