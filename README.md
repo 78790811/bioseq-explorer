@@ -5,7 +5,7 @@ of disease-associated gene sequences.
 
 BioSeq Explorer consists of two components:
 - **HUBA** — a terminal-based data preparation pipeline (ETL)
-- **BioSeq Explorer App** — a GUI-based analytical tool (in development)
+- **BioSeq Explorer App** — a GUI-based analytical tool
 
 ---
 
@@ -23,23 +23,39 @@ BRCA1, BRCA2, TP53, CHEK2 and PALB2.
 
 ```
 bioseq_explorer/
+├── app/                      ← BioSeq Explorer GUI
+│   ├── main.py               ← main application window (tabbed layout)
+│   ├── config.py             ← GUI configuration and analysis constants
+│   └── src/
+│       ├── analyzer.py       ← GC%, N%, sequence length metrics
+│       ├── motif_analyzer.py ← motif search (predefined and custom)
+│       ├── orf_analyzer.py   ← ORF identification (3 forward frames)
+│       ├── plots.py          ← matplotlib visualisations
+│       ├── stats.py          ← statistical tests and correlation
+│       └── report.py         ← Markdown report generation
 ├── source/                   ← input files (FASTA, CSV, TSV)
 ├── results/
-│   ├── tables/               ← CSV output files
-│   ├── plots/                ← PNG charts
+│   ├── tables/               ← CSV output files from HUBA
+│   ├── plots/                ← PNG charts from HUBA
+│   ├── app_output/           ← reports and plots from BioSeq Explorer
 │   └── REPORT.md             ← auto-generated pipeline report
-├── src/
+├── src/                      ← HUBA modules
 │   ├── load_data.py          ← file loader (FASTA, CSV, TSV)
 │   ├── cleaner.py            ← sequence validation and filtering
 │   ├── integrator.py         ← standardisation and CSV export
 │   ├── pipeline.py           ← orchestrator (connects all modules)
 │   └── stats.py              ← statistics, plots, CSV utilities
+├── tests/
+│   └── verify_orfs.py        ← ORF algorithm verification (Biopython)
+├── run.py                    ← launcher window
 ├── main.py                   ← HUBA entry point
 ├── fetch_ncbi.py             ← download sequences from NCBI
 ├── generate_test_data.py     ← generate CSV/TSV test files
-├── config.py                 ← all paths and parameters
+├── config.py                 ← HUBA paths and parameters
 └── requirements.txt
 ```
+
+---
 
 ## Installation
 
@@ -51,9 +67,19 @@ pip install -r requirements.txt
 
 ---
 
-## HUBA — quick start
+## Quick start
 
-### 1. Download sequences from NCBI
+### 1. Launch the application
+
+```bash
+python run.py
+```
+
+Opens the launcher window with two options:
+- **Run HUBA Pipeline** — prepare and clean input data
+- **Open BioSeq Explorer** — open the analytical GUI
+
+### 2. Download sequences from NCBI
 
 ```bash
 python fetch_ncbi.py
@@ -62,9 +88,7 @@ python fetch_ncbi.py
 Downloads FASTA sequences for BRCA1, BRCA2, TP53, CHEK2 and PALB2
 into `source/`. Skips files that already exist.
 
-To re-download a gene, delete its file from `source/` and run again.
-
-### 2. (Optional) Generate CSV and TSV test files
+### 3. (Optional) Generate CSV and TSV test files
 
 ```bash
 python generate_test_data.py
@@ -73,7 +97,11 @@ python generate_test_data.py
 Creates 6 test files in `source/` simulating data from different
 laboratories with varying column naming conventions.
 
-### 3. Run the pipeline
+---
+
+## HUBA pipeline
+
+### Run commands
 
 ```bash
 # Check that files load correctly (no filtering or saving)
@@ -94,11 +122,7 @@ python main.py --select
 python main.py --delete
 ```
 
----
-
-## Filter variants
-
-HUBA supports three filtering variants defined in `config.py`:
+### Filter variants
 
 | Variant | `min_len` | `max_n_pct` | Use case |
 |---------|-----------|-------------|----------|
@@ -106,23 +130,7 @@ HUBA supports three filtering variants defined in `config.py`:
 | B | 20 bp | 20% | Standard — typical analysis |
 | C | 50 bp | 5% | Strict — high-quality sequences, clinical use |
 
-You can add your own variant by editing `VARIANTS` in `config.py`:
-
-```python
-VARIANTS = {
-    ...
-    "D": {
-        "min_len": 100,
-        "max_n_pct": 0.01,
-    },
-}
-```
-
----
-
-## Supported input formats
-
-HUBA automatically detects and loads:
+### Supported input formats
 
 | Format | Extensions | Notes |
 |--------|------------|-------|
@@ -138,11 +146,14 @@ Column names are automatically mapped to canonical names:
 | `sequence` | DNASequence, dna_sequence, seq, nucleotides, Sequence |
 | `organism` | organism, species, org |
 
----
+### Sequence validation rules
 
-## Output files
+1. **EMPTY_SEQUENCE** — sequence is empty
+2. **INVALID_CHARACTERS** — sequence contains characters other than A, T, G, C, N
+3. **TOO_SHORT** — sequence length is below `min_len`
+4. **HIGH_N** — proportion of N bases exceeds `max_n_pct`
 
-After running the pipeline, the following files are generated:
+### Output files
 
 | File | Description |
 |------|-------------|
@@ -160,21 +171,47 @@ After running the pipeline, the following files are generated:
 
 ---
 
-## Sequence validation rules
+## BioSeq Explorer App
 
-HUBA applies four rejection rules in order:
+A GUI analytical tool built with CustomTkinter. Launch via `python run.py`.
 
-1. **EMPTY_SEQUENCE** — sequence is empty
-2. **INVALID_CHARACTERS** — sequence contains characters other than A, T, G, C, N
-3. **TOO_SHORT** — sequence length is below `min_len`
-4. **HIGH_N** — proportion of N bases exceeds `max_n_pct`
+### Tabs
+
+| Tab | Functionality |
+|-----|---------------|
+| **Home** | Load `clean_dataset_*.csv`, preview data, display HUBA report |
+| **Quality Control** | GC%, N%, sequence length — table, flags, 5 plots |
+| **Motif Analysis** | Search predefined or custom motifs, per-gene comparison |
+| **ORF Analysis** | Identify open reading frames, per-gene summary, plots |
+| **Statistics** | t-test, ANOVA, Mann-Whitney U, correlation matrix |
+| **Report** | Generate Markdown report with all plots and statistics |
+
+### ORF analysis — scope note
+
+The ORF module scans **3 forward reading frames (+1, +2, +3) only**.
+This is intentional: the primary input sequences are mRNA transcripts
+(NCBI accessions prefixed with `NM_`), which are single-stranded and
+read in one direction. Reverse strand scanning (`-1, -2, -3`) is
+relevant for genomic DNA but would produce misleading results for mRNA.
+
+The algorithm was independently verified against Biopython — all 23
+test sequences produced identical ORF counts and positions
+(see `tests/verify_orfs.py`).
 
 ---
 
-## Data sources
+## Tests
 
-- **NCBI Nucleotide** — primary source, downloaded via Biopython Entrez API
-- **Custom files** — any FASTA, CSV or TSV file placed in `source/`
+```bash
+# Verify ORF algorithm against independent Biopython implementation
+python tests/verify_orfs.py
+
+# With custom minimum ORF length
+python tests/verify_orfs.py --min-len 300
+
+# For a single gene
+python tests/verify_orfs.py --gene brca1
+```
 
 ---
 
@@ -182,15 +219,40 @@ HUBA applies four rejection rules in order:
 
 The following extensions are planned or possible:
 
+### Analysis extensions
+- **Reverse strand ORF scanning** — extend `orf_analyzer.py` with a
+  `both_strands=True` parameter and `reverse_complement()` helper for
+  analysis of genomic DNA sequences (prefixed `NC_`, `CM_`). The
+  scaffolding is documented in `app/src/orf_analyzer.py`.
+- **Six-frame translation** — full six-frame ORF analysis matching
+  NCBI ORFfinder output
+- **Sequence alignment** — pairwise and multiple sequence alignment
+  using Biopython `pairwise2` or `Bio.Align`
+- **Codon usage analysis** — codon frequency tables per gene
+
+### Data sources
 - **Ensembl integration** — download sequences via Ensembl REST API
   as an alternative to NCBI
+- **UniProt integration** — link identified ORFs to protein records
+
+### Input/output
 - **XLSX support** — load Excel files as an additional input format
+- **PDF report export** — export the analysis report as PDF
+  in addition to Markdown
+- **Report customisation** — user-selectable sections and plot styles
+
+### Infrastructure
 - **Database backend** — store cleaned datasets in SQLite for
   faster repeated analysis
-- **Extended analysis** — ORF detection, motif search, sequence
-  alignment using Biopython
-- **BioSeq Explorer App** — GUI-based analytical tool for interactive
-  exploration of cleaned datasets (in development)
+- **Extended test suite** — unit tests for all analysis modules
+  using pytest
+
+---
+
+## Data sources
+
+- **NCBI Nucleotide** — primary source, downloaded via Biopython Entrez API
+- **Custom files** — any FASTA, CSV or TSV file placed in `source/`
 
 ---
 
@@ -202,6 +264,7 @@ biopython>=1.83
 pandas>=2.0
 numpy>=1.26
 scipy>=1.11
+customtkinter>=5.2.2
 ```
 
 ---
