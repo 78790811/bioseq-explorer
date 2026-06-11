@@ -437,6 +437,9 @@ class QualityControlTab(ctk.CTkFrame):
         _spec2.loader.exec_module(plots)
 
         # Compute QC metrics
+        if self.qc_df is not None:
+            return
+
         try:
             self.qc_df = analyzer.run_quality_analysis(df)
             self.qc_df = analyzer.flag_outliers(
@@ -690,6 +693,10 @@ class MotifAnalysisTab(ctk.CTkFrame):
         Returns:
             None
         """
+        if self.df is not None:
+            self.df = df
+            return
+
         import importlib.util as _ilu
 
         self.df = df
@@ -1072,6 +1079,10 @@ class ORFAnalysisTab(ctk.CTkFrame):
         Returns:
             None
         """
+        if self.df is not None:
+            self.df = df
+            return
+
         import importlib.util as _ilu
 
         self.df = df
@@ -1546,6 +1557,9 @@ class StatisticsTab(ctk.CTkFrame):
         self._plots = _ilu.module_from_spec(_spec3)
         _spec3.loader.exec_module(self._plots)
 
+        if self.qc_df is not None:
+            return
+
         try:
             self.qc_df = analyzer.run_quality_analysis(df)
         except Exception as e:
@@ -1960,6 +1974,9 @@ class ReportTab(ctk.CTkFrame):
             setattr(self, attr, mod)
 
         # Compute QC metrics
+        if self.qc_df is not None:
+            return
+
         try:
             self.qc_df = self._analyzer.run_quality_analysis(df)
             self.qc_df = self._analyzer.flag_outliers(

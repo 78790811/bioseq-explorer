@@ -34,7 +34,9 @@ def find_orfs(
     """Find all ORFs in a single DNA sequence across 3 reading frames.
 
     Scans all three forward reading frames (+1, +2, +3).
-    An ORF starts at ATG and ends at the first in-frame stop codon.
+    An ORF starts at the first ATG and ends at the first in-frame stop codon.
+    After a stop codon is found, scanning continues from the next codon
+    in the same frame — nested ORFs within a larger ORF are not reported.
     Only ORFs with length >= min_length are reported.
 
     Args:
@@ -54,36 +56,35 @@ def find_orfs(
     orfs = []
 
     for frame in range(N_FRAMES):
+        # Walk through the sequence codon by codon in this frame
         i = frame
-        while i < seq_len - 2:
+        in_orf = False
+        orf_start = 0
+
+        while i + 3 <= seq_len:
             codon = sequence[i:i + 3]
 
-            if codon == START_CODON:
-                # Found a start — scan forward for stop codon
-                start = i
-                j = i + 3
-                while j < seq_len - 2:
-                    stop_codon = sequence[j:j + 3]
-                    if stop_codon in STOP_CODONS:
-                        end = j + 3  # Include the stop codon
-                        orf_len = end - start
-                        if orf_len >= min_length:
-                            orfs.append({
-                                "frame":    frame + 1,
-                                "start":    start + 1,    # Convert to 1-based
-                                "end":      end,
-                                "length":   orf_len,
-                                "sequence": sequence[start:end],
-                            })
-                        i = j + 3  # Continue scan after this stop codon
-                        break
-                    j += 3
-                else:
-                    # No stop codon found — skip to next position
-                    i += 3
-                    continue
+            if not in_orf:
+                # Looking for a start codon
+                if codon == START_CODON:
+                    in_orf = True
+                    orf_start = i
             else:
-                i += 3
+                # Inside an ORF — looking for a stop codon
+                if codon in STOP_CODONS:
+                    end = i + 3          # Include the stop codon
+                    orf_len = end - orf_start
+                    if orf_len >= min_length:
+                        orfs.append({
+                            "frame":    frame + 1,
+                            "start":    orf_start + 1,   # Convert to 1-based
+                            "end":      end,
+                            "length":   orf_len,
+                            "sequence": sequence[orf_start:end],
+                        })
+                    in_orf = False  # Reset — look for next ATG
+
+            i += 3  # Always advance by one codon in this frame
 
     # Sort by length descending
     orfs.sort(key=lambda o: o["length"], reverse=True)
