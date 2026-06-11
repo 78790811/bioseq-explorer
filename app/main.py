@@ -652,7 +652,7 @@ class QualityControlTab(ctk.CTkFrame):
 
 
 # ---------------------------------------------------------------------------
-# Tab: Motif Analysis (placeholder)
+# Tab: Motif Analysis
 # ---------------------------------------------------------------------------
 
 class MotifAnalysisTab(ctk.CTkFrame):
@@ -660,31 +660,29 @@ class MotifAnalysisTab(ctk.CTkFrame):
 
     def __init__(self, parent: ctk.CTkTabview) -> None:
         super().__init__(parent, fg_color="transparent")
-        self._build_placeholder()
 
-    def _build_placeholder(self) -> None:
-        """Show a placeholder until data is loaded and module is implemented.
+        self.df = None
+        self._motif_module = None
+        self._plots = None
+        self._current_fig = None   # Current bar chart figure
 
-        Args:
-            None
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
 
-        Returns:
-            None
-        """
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Motif Analysis",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(40, 8))
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Load a dataset in the Home tab to enable this analysis.",
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
 
     def load_data(self, df) -> None:
-        """Receive the loaded DataFrame from HomeTab.
+        """Receive DataFrame and build the Motif Analysis UI.
 
         Args:
             df: pandas DataFrame with sequence data.
@@ -692,7 +690,346 @@ class MotifAnalysisTab(ctk.CTkFrame):
         Returns:
             None
         """
-        pass
+        import importlib.util as _ilu
+
+        self.df = df
+
+        # Load motif_analyzer module
+        _path = APP_DIR / "src" / "motif_analyzer.py"
+        _spec = _ilu.spec_from_file_location("motif_analyzer", _path)
+        self._motif_module = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(self._motif_module)
+
+        # Load plots module
+        _plt_path = APP_DIR / "src" / "plots.py"
+        _spec2 = _ilu.spec_from_file_location("plots", _plt_path)
+        self._plots = _ilu.module_from_spec(_spec2)
+        _spec2.loader.exec_module(self._plots)
+
+        self._placeholder.destroy()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the full Motif Analysis UI.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Main layout: left = controls + results table, right = plot ---
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=16)
+        content.columnconfigure(0, weight=2)
+        content.columnconfigure(1, weight=3)
+        content.rowconfigure(0, weight=1)
+
+        # ── LEFT PANEL ──────────────────────────────────────────────────────
+        left = ctk.CTkFrame(content)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(
+            left,
+            text="Motif search",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 8))
+
+        # --- Predefined motif selector ---
+        ctk.CTkLabel(
+            left,
+            text="Predefined motifs:",
+            font=ctk.CTkFont(size=12),
+            anchor="w",
+        ).pack(anchor="w", padx=12)
+
+        motif_names = list(config.PREDEFINED_MOTIFS.keys())
+        self.predefined_var = ctk.StringVar(value=motif_names[0])
+        self.predefined_menu = ctk.CTkOptionMenu(
+            left,
+            variable=self.predefined_var,
+            values=motif_names,
+            width=300,
+            font=ctk.CTkFont(size=11),
+            command=self._on_predefined_selected,
+        )
+        self.predefined_menu.pack(fill="x", padx=12, pady=(4, 8))
+
+        # Separator label
+        ctk.CTkLabel(
+            left,
+            text="— or enter a custom motif —",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        ).pack(pady=(0, 4))
+
+        # --- Custom motif entry ---
+        ctk.CTkLabel(
+            left,
+            text="Custom motif (A/C/G/T/N only):",
+            font=ctk.CTkFont(size=12),
+            anchor="w",
+        ).pack(anchor="w", padx=12)
+
+        entry_row = ctk.CTkFrame(left, fg_color="transparent")
+        entry_row.pack(fill="x", padx=12, pady=(4, 4))
+
+        self.custom_motif_var = ctk.StringVar()
+        self.custom_entry = ctk.CTkEntry(
+            entry_row,
+            textvariable=self.custom_motif_var,
+            placeholder_text="e.g. GAATTC",
+            font=ctk.CTkFont(size=12),
+            width=200,
+        )
+        self.custom_entry.pack(side="left")
+        # Bind Enter key to run search
+        self.custom_entry.bind("<Return>", lambda _: self._run_search())
+
+        # Validation label
+        self.validation_label = ctk.CTkLabel(
+            left,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="red",
+            anchor="w",
+        )
+        self.validation_label.pack(anchor="w", padx=12, pady=(0, 4))
+
+        # --- Search button ---
+        ctk.CTkButton(
+            left,
+            text="🔍  Search",
+            height=38,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._run_search,
+        ).pack(fill="x", padx=12, pady=(4, 8))
+
+        # --- Active motif label ---
+        self.active_motif_label = ctk.CTkLabel(
+            left,
+            text="",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=("#1F6AA5", "#4DA6FF"),
+            anchor="w",
+        )
+        self.active_motif_label.pack(anchor="w", padx=12, pady=(0, 8))
+
+        # --- Per-gene summary table ---
+        ctk.CTkLabel(
+            left,
+            text="Results by gene:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+
+        summary_container = tk.Frame(left)
+        summary_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        summary_cols = [
+            "Gene / Source", "Total occurrences",
+            "Sequences with motif", "Total sequences", "Mean per sequence",
+        ]
+        self.summary_tree = ttk.Treeview(
+            summary_container, columns=summary_cols, show="headings", height=8,
+        )
+        col_widths = {
+            "Gene / Source": 130,
+            "Total occurrences": 100,
+            "Sequences with motif": 120,
+            "Total sequences": 100,
+            "Mean per sequence": 110,
+        }
+        for col in summary_cols:
+            self.summary_tree.heading(col, text=col)
+            self.summary_tree.column(
+                col, width=col_widths.get(col, 100), minwidth=60, anchor="center"
+            )
+
+        vsb = ttk.Scrollbar(
+            summary_container, orient="vertical", command=self.summary_tree.yview
+        )
+        self.summary_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.summary_tree.pack(fill="both", expand=True)
+
+        # ── RIGHT PANEL ──────────────────────────────────────────────────────
+        right = ctk.CTkFrame(content)
+        right.grid(row=0, column=1, sticky="nsew")
+
+        right_header = ctk.CTkFrame(right, fg_color="transparent")
+        right_header.pack(fill="x", padx=12, pady=(10, 4))
+
+        ctk.CTkLabel(
+            right_header,
+            text="Occurrences by gene",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            right_header,
+            text="⤢  Open in window",
+            height=28,
+            width=150,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray20", "gray80"),
+            hover_color=("gray85", "gray25"),
+            command=self._open_plot_window,
+        ).pack(side="right")
+
+        # Plot area
+        self.plot_frame = tk.Frame(right)
+        self.plot_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+        # Per-sequence detail table below plot
+        ctk.CTkLabel(
+            right,
+            text="Per-sequence detail:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(4, 4))
+
+        detail_container = tk.Frame(right)
+        detail_container.pack(fill="x", padx=12, pady=(0, 12))
+
+        detail_cols = ["id", "_source", "count", "positions"]
+        self.detail_tree = ttk.Treeview(
+            detail_container, columns=detail_cols, show="headings", height=6,
+        )
+        detail_widths = {"id": 140, "_source": 160, "count": 60, "positions": 200}
+        detail_headers = {
+            "id": "ID", "_source": "Gene / Source",
+            "count": "Count", "positions": "Positions (1-based)",
+        }
+        for col in detail_cols:
+            self.detail_tree.heading(col, text=detail_headers[col])
+            self.detail_tree.column(
+                col, width=detail_widths.get(col, 100), minwidth=50
+            )
+
+        hsb = ttk.Scrollbar(
+            detail_container, orient="horizontal", command=self.detail_tree.xview
+        )
+        vsb2 = ttk.Scrollbar(
+            detail_container, orient="vertical", command=self.detail_tree.yview
+        )
+        self.detail_tree.configure(
+            xscrollcommand=hsb.set, yscrollcommand=vsb2.set
+        )
+        vsb2.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        self.detail_tree.pack(fill="both", expand=True)
+
+        # Run initial search with first predefined motif
+        self._on_predefined_selected(motif_names[0])
+
+    def _on_predefined_selected(self, name: str) -> None:
+        """Set the custom entry to the selected predefined motif sequence.
+
+        Args:
+            name: Display name of the selected predefined motif.
+
+        Returns:
+            None
+        """
+        motif_seq = config.PREDEFINED_MOTIFS.get(name, "")
+        self.custom_motif_var.set(motif_seq)
+        self.validation_label.configure(text="")
+
+    def _run_search(self) -> None:
+        """Validate the motif and run the search.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        motif = self.custom_motif_var.get().strip()
+
+        # Validate
+        valid, msg = self._motif_module.validate_motif(motif)
+        if not valid:
+            self.validation_label.configure(text=msg)
+            return
+
+        self.validation_label.configure(text="")
+        motif = motif.upper()
+
+        # Run search
+        try:
+            search_df = self._motif_module.search_motif(self.df, motif)
+            summary_df = self._motif_module.summarize_by_gene(search_df)
+        except Exception as e:
+            messagebox.showerror("Motif Search Error", f"Search failed:\n{e}")
+            return
+
+        total = int(search_df["count"].sum())
+        self.active_motif_label.configure(
+            text=f"Motif: {motif}   |   Total occurrences: {total}"
+        )
+
+        # Populate summary table
+        self.summary_tree.delete(*self.summary_tree.get_children())
+        for _, row in summary_df.iterrows():
+            self.summary_tree.insert("", "end", values=list(row))
+
+        # Populate detail table
+        self.detail_tree.delete(*self.detail_tree.get_children())
+        for _, row in search_df.iterrows():
+            tag = "found" if row["count"] > 0 else "notfound"
+            self.detail_tree.insert(
+                "", "end",
+                values=[row["id"], row["_source"], row["count"], row["positions"]],
+                tags=(tag,),
+            )
+        self.detail_tree.tag_configure("found", background="#E8F5E9")
+        self.detail_tree.tag_configure("notfound", background="")
+
+        # Update plot
+        self._update_plot(summary_df, motif)
+
+    def _update_plot(self, summary_df, motif: str) -> None:
+        """Regenerate and embed the occurrences bar chart.
+
+        Args:
+            summary_df: Per-gene summary DataFrame.
+            motif:      Motif string for chart title.
+
+        Returns:
+            None
+        """
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        for widget in self.plot_frame.winfo_children():
+            widget.destroy()
+
+        self._current_fig = self._plots.plot_motif_by_gene(summary_df, motif)
+        canvas = FigureCanvasTkAgg(self._current_fig, master=self.plot_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _open_plot_window(self) -> None:
+        """Open the current motif plot in a standalone window.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        if self._current_fig is not None:
+            motif = self.custom_motif_var.get().strip().upper()
+            self._plots.open_plot_window(
+                self._current_fig,
+                title=f"Motif '{motif}' — occurrences by gene",
+            )
+        else:
+            messagebox.showinfo("No plot", "Run a search first.")
 
 
 # ---------------------------------------------------------------------------

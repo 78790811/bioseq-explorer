@@ -340,3 +340,113 @@ def plot_n_content(
 
     fig.tight_layout()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Motif analysis plots
+# ---------------------------------------------------------------------------
+
+def plot_motif_by_gene(
+    summary_df: pd.DataFrame,
+    motif: str,
+    figsize: tuple[float, float] = EMBED_FIGSIZE,
+) -> Figure:
+    """Plot total motif occurrences per gene as a horizontal bar chart.
+
+    Args:
+        summary_df: DataFrame from motif_analyzer.summarize_by_gene(),
+                    must have 'Gene / Source' and 'Total occurrences' columns.
+        motif:      Motif string (used in the chart title).
+        figsize:    Figure dimensions in inches.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=figsize, dpi=FIGURE_DPI)
+    fig.patch.set_facecolor("#F5F5F5")
+    ax.set_facecolor("#FAFAFA")
+
+    if summary_df.empty:
+        ax.text(0.5, 0.5, "No results to display.",
+                ha="center", va="center", transform=ax.transAxes)
+        return fig
+
+    genes = summary_df["Gene / Source"]
+    counts = summary_df["Total occurrences"]
+    colors = [GENE_COLORS[i % len(GENE_COLORS)] for i in range(len(genes))]
+
+    bars = ax.barh(genes, counts, color=colors, alpha=0.85, edgecolor="white")
+
+    # Add value labels on bars
+    for bar, count in zip(bars, counts):
+        if count > 0:
+            ax.text(
+                bar.get_width() + 0.1,
+                bar.get_y() + bar.get_height() / 2,
+                str(count),
+                va="center", ha="left", fontsize=10,
+            )
+
+    ax.set_xlabel("Total occurrences", fontsize=11)
+    ax.set_title(
+        f"Motif '{motif.upper()}' — occurrences by gene",
+        fontsize=13, fontweight="bold", pad=10,
+    )
+    ax.invert_yaxis()  # Top gene = most occurrences
+
+    fig.tight_layout()
+    return fig
+
+
+def plot_motif_comparison(
+    compare_df: pd.DataFrame,
+    figsize: tuple[float, float] = EMBED_FIGSIZE,
+) -> Figure:
+    """Plot a grouped bar chart comparing multiple motifs across genes.
+
+    Args:
+        compare_df: DataFrame from motif_analyzer.compare_motifs(),
+                    genes as rows, motifs as columns.
+        figsize:    Figure dimensions in inches.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=figsize, dpi=FIGURE_DPI)
+    fig.patch.set_facecolor("#F5F5F5")
+    ax.set_facecolor("#FAFAFA")
+
+    if compare_df.empty:
+        ax.text(0.5, 0.5, "No data to display.",
+                ha="center", va="center", transform=ax.transAxes)
+        return fig
+
+    motif_cols = [c for c in compare_df.columns if c != "Gene / Source"]
+    genes = compare_df["Gene / Source"].tolist()
+    n_genes = len(genes)
+    n_motifs = len(motif_cols)
+
+    x = np.arange(n_genes)
+    bar_width = min(0.8 / n_motifs, 0.25)
+
+    for i, motif in enumerate(motif_cols):
+        offset = (i - n_motifs / 2 + 0.5) * bar_width
+        ax.bar(
+            x + offset,
+            compare_df[motif],
+            width=bar_width,
+            label=motif,
+            color=GENE_COLORS[i % len(GENE_COLORS)],
+            alpha=0.85,
+            edgecolor="white",
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(genes, rotation=25, ha="right", fontsize=9)
+    ax.set_ylabel("Total occurrences", fontsize=11)
+    ax.set_title("Motif comparison across genes", fontsize=13,
+                 fontweight="bold", pad=10)
+    ax.legend(fontsize=9, title="Motif", title_fontsize=9)
+
+    fig.tight_layout()
+    return fig
