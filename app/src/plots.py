@@ -450,3 +450,149 @@ def plot_motif_comparison(
 
     fig.tight_layout()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# ORF analysis plots
+# ---------------------------------------------------------------------------
+
+def plot_orf_counts_by_gene(
+    summary_df: pd.DataFrame,
+    figsize: tuple[float, float] = EMBED_FIGSIZE,
+) -> Figure:
+    """Plot total ORF count per gene as a bar chart.
+
+    Args:
+        summary_df: DataFrame from orf_analyzer.summarize_by_gene(),
+                    must have 'Gene / Source' and 'Total ORFs' columns.
+        figsize:    Figure dimensions in inches.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=figsize, dpi=FIGURE_DPI)
+    fig.patch.set_facecolor("#F5F5F5")
+    ax.set_facecolor("#FAFAFA")
+
+    if summary_df.empty:
+        ax.text(0.5, 0.5, "No ORFs found.",
+                ha="center", va="center", transform=ax.transAxes)
+        return fig
+
+    genes = summary_df["Gene / Source"]
+    counts = summary_df["Total ORFs"]
+    colors = [GENE_COLORS[i % len(GENE_COLORS)] for i in range(len(genes))]
+
+    bars = ax.bar(genes, counts, color=colors, alpha=0.85, edgecolor="white")
+
+    for bar, count in zip(bars, counts):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.3,
+            str(count),
+            ha="center", va="bottom", fontsize=10,
+        )
+
+    ax.set_xticklabels(genes, rotation=25, ha="right", fontsize=9)
+    ax.set_ylabel("Total ORFs", fontsize=11)
+    ax.set_title("Total ORFs by gene", fontsize=13, fontweight="bold", pad=10)
+
+    fig.tight_layout()
+    return fig
+
+
+def plot_orf_length_distribution(
+    orf_df: pd.DataFrame,
+    figsize: tuple[float, float] = EMBED_FIGSIZE,
+) -> Figure:
+    """Plot distribution of longest ORF lengths per sequence as a boxplot by gene.
+
+    Args:
+        orf_df:  DataFrame from orf_analyzer.run_orf_analysis(),
+                 must have 'longest_orf' and '_source' columns.
+        figsize: Figure dimensions in inches.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=figsize, dpi=FIGURE_DPI)
+    fig.patch.set_facecolor("#F5F5F5")
+    ax.set_facecolor("#FAFAFA")
+
+    if "_source" not in orf_df.columns or orf_df.empty:
+        ax.text(0.5, 0.5, "No data available.",
+                ha="center", va="center", transform=ax.transAxes)
+        return fig
+
+    sources = sorted(orf_df["_source"].unique())
+    data = [
+        orf_df.loc[orf_df["_source"] == s, "longest_orf"]
+        for s in sources
+    ]
+    labels = [
+        s.replace("_sequences.fasta", "").replace(".fasta", "")
+         .replace(".csv", "").replace(".tsv", "")
+        for s in sources
+    ]
+
+    bp = ax.boxplot(
+        data,
+        patch_artist=True,
+        medianprops=dict(color="white", linewidth=2),
+        whiskerprops=dict(linewidth=1.2),
+        capprops=dict(linewidth=1.2),
+        flierprops=dict(marker="o", markersize=3, alpha=0.5),
+    )
+    for patch, color in zip(bp["boxes"], GENE_COLORS):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.8)
+
+    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=9)
+    ax.set_ylabel("Longest ORF length (bp)", fontsize=11)
+    ax.set_title("Longest ORF length by gene", fontsize=13,
+                 fontweight="bold", pad=10)
+
+    fig.tight_layout()
+    return fig
+
+
+def plot_orf_length_histogram(
+    orf_df: pd.DataFrame,
+    figsize: tuple[float, float] = EMBED_FIGSIZE,
+) -> Figure:
+    """Plot histogram of all longest ORF lengths across all sequences.
+
+    Args:
+        orf_df:  DataFrame from orf_analyzer.run_orf_analysis().
+        figsize: Figure dimensions in inches.
+
+    Returns:
+        Matplotlib Figure object.
+    """
+    fig, ax = plt.subplots(figsize=figsize, dpi=FIGURE_DPI)
+    fig.patch.set_facecolor("#F5F5F5")
+    ax.set_facecolor("#FAFAFA")
+
+    lengths = orf_df["longest_orf"][orf_df["longest_orf"] > 0]
+
+    if lengths.empty:
+        ax.text(0.5, 0.5, "No ORFs found.",
+                ha="center", va="center", transform=ax.transAxes)
+        return fig
+
+    ax.hist(
+        lengths,
+        bins=20,
+        color=GENE_COLORS[4],
+        alpha=0.75,
+        edgecolor="white",
+        linewidth=0.5,
+    )
+
+    ax.set_xlabel("Longest ORF length (bp)", fontsize=11)
+    ax.set_ylabel("Number of sequences", fontsize=11)
+    ax.set_title("Distribution of longest ORF lengths", fontsize=13,
+                 fontweight="bold", pad=10)
+
+    fig.tight_layout()
+    return fig

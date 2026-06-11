@@ -1033,7 +1033,7 @@ class MotifAnalysisTab(ctk.CTkFrame):
 
 
 # ---------------------------------------------------------------------------
-# Tab: ORF Analysis (placeholder)
+# Tab: ORF Analysis
 # ---------------------------------------------------------------------------
 
 class ORFAnalysisTab(ctk.CTkFrame):
@@ -1041,31 +1041,30 @@ class ORFAnalysisTab(ctk.CTkFrame):
 
     def __init__(self, parent: ctk.CTkTabview) -> None:
         super().__init__(parent, fg_color="transparent")
-        self._build_placeholder()
 
-    def _build_placeholder(self) -> None:
-        """Show a placeholder until data is loaded and module is implemented.
+        self.df = None
+        self.orf_df = None
+        self._orf_module = None
+        self._plots = None
+        self._current_figs = {}   # Stores current figures for popup reuse
 
-        Args:
-            None
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
 
-        Returns:
-            None
-        """
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="ORF Analysis",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).pack(pady=(40, 8))
         ctk.CTkLabel(
-            self,
+            self._placeholder,
             text="Load a dataset in the Home tab to enable this analysis.",
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
 
     def load_data(self, df) -> None:
-        """Receive the loaded DataFrame from HomeTab.
+        """Receive DataFrame and build the ORF Analysis UI.
 
         Args:
             df: pandas DataFrame with sequence data.
@@ -1073,7 +1072,419 @@ class ORFAnalysisTab(ctk.CTkFrame):
         Returns:
             None
         """
-        pass
+        import importlib.util as _ilu
+
+        self.df = df
+
+        # Load orf_analyzer module
+        _path = APP_DIR / "src" / "orf_analyzer.py"
+        _spec = _ilu.spec_from_file_location("orf_analyzer", _path)
+        self._orf_module = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(self._orf_module)
+
+        # Load plots module
+        _plt_path = APP_DIR / "src" / "plots.py"
+        _spec2 = _ilu.spec_from_file_location("plots", _plt_path)
+        self._plots = _ilu.module_from_spec(_spec2)
+        _spec2.loader.exec_module(self._plots)
+
+        self._placeholder.destroy()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Build the full ORF Analysis UI.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # --- Top controls bar ---
+        controls = ctk.CTkFrame(self)
+        controls.pack(fill="x", padx=16, pady=(12, 8))
+
+        ctk.CTkLabel(
+            controls,
+            text="Minimum ORF length (bp):",
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left", padx=(12, 8), pady=8)
+
+        self.min_len_var = ctk.StringVar(
+            value=str(config.ORF_MIN_LENGTH)
+        )
+        ctk.CTkEntry(
+            controls,
+            textvariable=self.min_len_var,
+            width=80,
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left", pady=8)
+
+        ctk.CTkButton(
+            controls,
+            text="▶  Run ORF Analysis",
+            height=36,
+            width=180,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._run_analysis,
+        ).pack(side="left", padx=(16, 0), pady=8)
+
+        self.status_label = ctk.CTkLabel(
+            controls,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+        )
+        self.status_label.pack(side="left", padx=(16, 0), pady=8)
+
+        # --- Main layout: left = summary table, right = plots ---
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        content.columnconfigure(0, weight=2)
+        content.columnconfigure(1, weight=3)
+        content.rowconfigure(0, weight=1)
+
+        # ── LEFT: summary table + per-sequence table ─────────────────────
+        left = ctk.CTkFrame(content)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        ctk.CTkLabel(
+            left,
+            text="Summary by gene",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        summary_container = tk.Frame(left)
+        summary_container.pack(fill="x", padx=12, pady=(0, 8))
+
+        summary_cols = [
+            "Gene / Source", "Total ORFs",
+            "Mean ORFs/sequence", "Mean longest ORF", "Max ORF length (bp)",
+        ]
+        self.summary_tree = ttk.Treeview(
+            summary_container, columns=summary_cols,
+            show="headings", height=7,
+        )
+        col_widths = {
+            "Gene / Source": 120,
+            "Total ORFs": 80,
+            "Mean ORFs/sequence": 110,
+            "Mean longest ORF": 110,
+            "Max ORF length (bp)": 120,
+        }
+        for col in summary_cols:
+            self.summary_tree.heading(col, text=col)
+            self.summary_tree.column(
+                col, width=col_widths.get(col, 100),
+                minwidth=60, anchor="center",
+            )
+
+        vsb = ttk.Scrollbar(
+            summary_container, orient="vertical",
+            command=self.summary_tree.yview,
+        )
+        self.summary_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self.summary_tree.pack(fill="x", expand=False)
+
+        # Per-sequence table
+        ctk.CTkLabel(
+            left,
+            text="Per-sequence results",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(4, 4))
+
+        ctk.CTkLabel(
+            left,
+            text="Double-click a row to see all ORFs for that sequence.",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(0, 4))
+
+        detail_container = tk.Frame(left)
+        detail_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        detail_cols = ["id", "_source", "n_orfs", "longest_orf", "mean_orf_len"]
+        detail_headers = {
+            "id": "ID", "_source": "Gene / Source",
+            "n_orfs": "ORFs", "longest_orf": "Longest (bp)",
+            "mean_orf_len": "Mean (bp)",
+        }
+        detail_widths = {
+            "id": 140, "_source": 140,
+            "n_orfs": 50, "longest_orf": 90, "mean_orf_len": 80,
+        }
+        self.detail_tree = ttk.Treeview(
+            detail_container, columns=detail_cols, show="headings",
+        )
+        for col in detail_cols:
+            self.detail_tree.heading(col, text=detail_headers[col])
+            self.detail_tree.column(
+                col, width=detail_widths.get(col, 80),
+                minwidth=50, anchor="center",
+            )
+
+        vsb2 = ttk.Scrollbar(
+            detail_container, orient="vertical",
+            command=self.detail_tree.yview,
+        )
+        self.detail_tree.configure(yscrollcommand=vsb2.set)
+        vsb2.pack(side="right", fill="y")
+        self.detail_tree.pack(fill="both", expand=True)
+
+        # Double-click to show full ORF list for a sequence
+        self.detail_tree.bind("<Double-1>", self._on_row_double_click)
+
+        # ── RIGHT: plots ─────────────────────────────────────────────────
+        right = ctk.CTkFrame(content)
+        right.grid(row=0, column=1, sticky="nsew")
+
+        ctk.CTkLabel(
+            right,
+            text="Visualizations",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.plots_scroll = ctk.CTkScrollableFrame(right)
+        self.plots_scroll.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+        # Placeholder message until analysis is run
+        self._plots_placeholder = ctk.CTkLabel(
+            self.plots_scroll,
+            text="Click 'Run ORF Analysis' to generate plots.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+        )
+        self._plots_placeholder.pack(pady=40)
+
+    def _run_analysis(self) -> None:
+        """Run ORF analysis with current min_length setting.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        try:
+            min_len = int(self.min_len_var.get())
+        except ValueError:
+            messagebox.showerror(
+                "Invalid input", "Minimum ORF length must be an integer."
+            )
+            return
+
+        self.status_label.configure(
+            text="Running ORF analysis...", text_color="gray"
+        )
+        self.update()
+
+        try:
+            self.orf_df = self._orf_module.run_orf_analysis(
+                self.df, min_length=min_len
+            )
+            summary_df = self._orf_module.summarize_by_gene(self.orf_df)
+        except Exception as e:
+            messagebox.showerror("ORF Error", f"Analysis failed:\n{e}")
+            self.status_label.configure(text="Error.", text_color="red")
+            return
+
+        total_orfs = int(self.orf_df["n_orfs"].sum())
+        self.status_label.configure(
+            text=f"✓ Done — {total_orfs} ORFs found (min {min_len} bp)",
+            text_color="green",
+        )
+
+        # Populate summary table
+        self.summary_tree.delete(*self.summary_tree.get_children())
+        for _, row in summary_df.iterrows():
+            self.summary_tree.insert("", "end", values=list(row))
+
+        # Populate per-sequence table
+        self.detail_tree.delete(*self.detail_tree.get_children())
+        for _, row in self.orf_df.iterrows():
+            tag = "has_orfs" if row["n_orfs"] > 0 else "no_orfs"
+            self.detail_tree.insert(
+                "", "end",
+                values=[
+                    row["id"], row["_source"],
+                    row["n_orfs"], row["longest_orf"], row["mean_orf_len"],
+                ],
+                tags=(tag,),
+            )
+        self.detail_tree.tag_configure("has_orfs", background="#E8F5E9")
+        self.detail_tree.tag_configure("no_orfs", background="")
+
+        # Update plots
+        self._update_plots(summary_df)
+
+    def _update_plots(self, summary_df) -> None:
+        """Regenerate and embed ORF plots.
+
+        Args:
+            summary_df: Per-gene summary DataFrame.
+
+        Returns:
+            None
+        """
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        # Clear existing content
+        for widget in self.plots_scroll.winfo_children():
+            widget.destroy()
+        self._current_figs = {}
+
+        plot_specs = [
+            ("Total ORFs by gene",              "counts",
+             lambda: self._plots.plot_orf_counts_by_gene(summary_df)),
+            ("Longest ORF length by gene",       "boxplot",
+             lambda: self._plots.plot_orf_length_distribution(self.orf_df)),
+            ("Distribution of longest ORF lengths", "histogram",
+             lambda: self._plots.plot_orf_length_histogram(self.orf_df)),
+        ]
+
+        for title, key, plot_fn in plot_specs:
+            card = ctk.CTkFrame(self.plots_scroll)
+            card.pack(fill="x", pady=(0, 10))
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w",
+            ).pack(anchor="w", padx=10, pady=(8, 4))
+
+            fig = plot_fn()
+            self._current_figs[key] = fig
+
+            thumb_frame = tk.Frame(card)
+            thumb_frame.pack(fill="x", padx=10)
+            canvas = FigureCanvasTkAgg(fig, master=thumb_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="x")
+
+            ctk.CTkButton(
+                card,
+                text="⤢  Open in window",
+                height=28,
+                width=160,
+                font=ctk.CTkFont(size=11),
+                fg_color="transparent",
+                border_width=1,
+                text_color=("gray20", "gray80"),
+                hover_color=("gray85", "gray25"),
+                command=lambda t=title, k=key: self._plots.open_plot_window(
+                    self._current_figs[k], title=t
+                ),
+            ).pack(anchor="e", padx=10, pady=(4, 8))
+
+    def _on_row_double_click(self, event) -> None:
+        """Open a popup with all ORFs for the double-clicked sequence.
+
+        Args:
+            event: Tkinter event object.
+
+        Returns:
+            None
+        """
+        selected = self.detail_tree.selection()
+        if not selected:
+            return
+
+        values = self.detail_tree.item(selected[0], "values")
+        seq_id = values[0]
+
+        try:
+            min_len = int(self.min_len_var.get())
+        except ValueError:
+            min_len = config.ORF_MIN_LENGTH
+
+        orfs = self._orf_module.get_sequence_orfs(self.df, seq_id, min_len)
+        self._show_orf_popup(seq_id, orfs)
+
+    def _show_orf_popup(self, seq_id: str, orfs: list[dict]) -> None:
+        """Show a popup window with all ORFs for a sequence.
+
+        Args:
+            seq_id: Sequence identifier.
+            orfs:   List of ORF dicts from orf_analyzer.find_orfs().
+
+        Returns:
+            None
+        """
+        popup = tk.Toplevel(self)
+        popup.title(f"ORFs — {seq_id}")
+        popup.geometry("720x440")
+
+        # Center on screen
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() - 720) // 2
+        y = (popup.winfo_screenheight() - 440) // 2
+        popup.geometry(f"720x440+{x}+{y}")
+
+        header = tk.Frame(popup)
+        header.pack(fill="x", padx=12, pady=(10, 4))
+        tk.Label(
+            header,
+            text=f"Sequence: {seq_id}",
+            font=("Segoe UI", 12, "bold"),
+        ).pack(side="left")
+        tk.Label(
+            header,
+            text=f"  —  {len(orfs)} ORF(s) found",
+            font=("Segoe UI", 11),
+            fg="gray",
+        ).pack(side="left")
+
+        # ORF table
+        container = tk.Frame(popup)
+        container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        cols = ["frame", "start", "end", "length", "sequence"]
+        headers = {
+            "frame": "Frame", "start": "Start", "end": "End",
+            "length": "Length (bp)", "sequence": "Sequence (preview)",
+        }
+        widths = {
+            "frame": 55, "start": 70, "end": 70,
+            "length": 90, "sequence": 340,
+        }
+
+        tree = ttk.Treeview(container, columns=cols, show="headings")
+        for col in cols:
+            tree.heading(col, text=headers[col])
+            tree.column(col, width=widths[col], minwidth=50, anchor="center")
+
+        vsb = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        tree.pack(fill="both", expand=True)
+
+        if orfs:
+            for orf in orfs:
+                preview = orf["sequence"][:40] + "..." \
+                    if len(orf["sequence"]) > 40 else orf["sequence"]
+                tree.insert("", "end", values=[
+                    f"+{orf['frame']}",
+                    orf["start"],
+                    orf["end"],
+                    orf["length"],
+                    preview,
+                ])
+        else:
+            tree.insert("", "end", values=["—", "—", "—", "—",
+                                           "No ORFs found for this sequence."])
+
+        tk.Button(
+            popup, text="Close", command=popup.destroy,
+            font=("Segoe UI", 11), width=12,
+        ).pack(pady=(0, 12))
 
 
 # ---------------------------------------------------------------------------
