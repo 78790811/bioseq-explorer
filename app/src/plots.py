@@ -206,6 +206,12 @@ def plot_gc_boxplot(
     ax.axhline(30, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
     ax.axhline(70, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
 
+    # Y axis: dynamic range with padding so all boxplots are fully visible
+    min_gc = qc_df["gc_content"].min() * 100
+    max_gc = qc_df["gc_content"].max() * 100
+    padding = max((max_gc - min_gc) * 0.2, 5)
+    ax.set_ylim(bottom=max(0, min_gc - padding), top=min(100, max_gc + padding))
+
     fig.tight_layout()
     return fig
 
@@ -496,6 +502,9 @@ def plot_orf_counts_by_gene(
     ax.set_xticklabels(genes, rotation=25, ha="right", fontsize=9)
     ax.set_ylabel("Total ORFs", fontsize=11)
     ax.set_title("Total ORFs by gene", fontsize=13, fontweight="bold", pad=10)
+
+    # Y axis: always start at 0, add 15% headroom above max bar
+    ax.set_ylim(bottom=0, top=counts.max() * 1.15)
 
     fig.tight_layout()
     return fig
