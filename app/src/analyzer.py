@@ -1,220 +1,240 @@
-# app/src/orf_analyzer.py
-# ORF (Open Reading Frame) identification functions for BioSeq Explorer.
-# Finds all ORFs in DNA sequences, computes their lengths and positions,
-# and summarizes results per gene group.
+# app/src/analyzer.py
+# Sequence analysis functions for BioSeq Explorer.
+# Computes GC content, N content, sequence length and basic statistics
+# used in the Quality Control tab.
 #
-# An ORF is defined as a sequence starting with ATG and ending with
-# a stop codon (TAA, TAG, TGA) in the same reading frame.
-#
-# SCOPE NOTE — Forward strand only:
-# This module scans 3 forward reading frames (+1, +2, +3) only.
-# The reverse complementary strand (-1, -2, -3) is not scanned.
-# This is intentional: the input sequences are mRNA transcripts
-# (NCBI accessions prefixed with NM_), which are single-stranded
-# and read in one direction only. Reverse strand scanning is relevant
-# for genomic DNA sequences (e.g. chromosomal sequences prefixed with
-# NC_, CM_) but would produce biologically misleading results for mRNA.
-# Users working with genomic sequences should be aware of this limitation.
+# All functions accept a pandas DataFrame with at least a 'sequence' column
+# and return a new DataFrame or a scalar value — no side effects.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-# Standard start codon
-START_CODON = "ATG"
+# Valid DNA base characters (uppercase)
+ALLOWED_BASES = frozenset("ACGTN")
 
-# Standard stop codons
-STOP_CODONS = frozenset({"TAA", "TAG", "TGA"})
-
-# Number of reading frames to scan
-N_FRAMES = 3
+# Bases counted as GC
+GC_BASES = frozenset("GC")
 
 # ---------------------------------------------------------------------------
-# Single-sequence ORF finder
+# Per-sequence metrics
 # ---------------------------------------------------------------------------
 
-def find_orfs(
-    sequence: str,
-    min_length: int = 100,
-) -> list[dict]:
-    """Find all ORFs in a single DNA sequence across 3 reading frames.
+def compute_gc_content(sequence: str) -> float:
+    """Compute GC content for a single DNA sequence.
 
-    Scans all three forward reading frames (+1, +2, +3).
-    An ORF starts at the first ATG and ends at the first in-frame stop codon.
-    After a stop codon is found, scanning continues from the next codon
-    in the same frame — nested ORFs within a larger ORF are not reported.
-    Only ORFs with length >= min_length are reported.
+    GC content = (count of G + count of C) / total length of sequence.
+    Returns 0.0 for empty sequences to avoid division by zero.
 
     Args:
-        sequence:   DNA sequence string (case-insensitive).
-        min_length: Minimum ORF length in base pairs to report (default 100).
+        sequence: DNA sequence string (case-insensitive).
 
     Returns:
-        List of dicts, each representing one ORF with keys:
-            frame     : int, reading frame (1, 2 or 3)
-            start     : int, 1-based start position of ATG
-            end       : int, 1-based end position (last base of stop codon)
-            length    : int, ORF length in base pairs
-            sequence  : str, ORF nucleotide sequence
+        GC content as a float in range [0.0, 1.0].
     """
     sequence = sequence.upper()
-    seq_len = len(sequence)
-    orfs = []
-
-    for frame in range(N_FRAMES):
-        # Walk through the sequence codon by codon in this frame
-        i = frame
-        in_orf = False
-        orf_start = 0
-
-        while i + 3 <= seq_len:
-            codon = sequence[i:i + 3]
-
-            if not in_orf:
-                # Looking for a start codon
-                if codon == START_CODON:
-                    in_orf = True
-                    orf_start = i
-            else:
-                # Inside an ORF — looking for a stop codon
-                if codon in STOP_CODONS:
-                    end = i + 3          # Include the stop codon
-                    orf_len = end - orf_start
-                    if orf_len >= min_length:
-                        orfs.append({
-                            "frame":    frame + 1,
-                            "start":    orf_start + 1,   # Convert to 1-based
-                            "end":      end,
-                            "length":   orf_len,
-                            "sequence": sequence[orf_start:end],
-                        })
-                    in_orf = False  # Reset — look for next ATG
-
-            i += 3  # Always advance by one codon in this frame
-
-    # Sort by length descending
-    orfs.sort(key=lambda o: o["length"], reverse=True)
-    return orfs
+    total = len(sequence)
+    if total == 0:
+        return 0.0
+    gc_count = sum(1 for base in sequence if base in GC_BASES)
+    return gc_count / total
 
 
-# ---------------------------------------------------------------------------
-# DataFrame-level ORF analysis
-# ---------------------------------------------------------------------------
+def compute_n_content(sequence: str) -> float:
+    """Compute N content (fraction of unknown bases) for a single sequence.
 
-def run_orf_analysis(
-    df: pd.DataFrame,
-    min_length: int = 100,
-) -> pd.DataFrame:
-    """Run ORF analysis on all sequences in a DataFrame.
-
-    For each sequence, finds all ORFs and records the count and
-    the longest ORF length.
+    N content = count of 'N' bases / total length of sequence.
+    Returns 0.0 for empty sequences.
 
     Args:
-        df:         DataFrame with 'id', 'sequence', '_source' columns.
-        min_length: Minimum ORF length to report (default 100 bp).
+        sequence: DNA sequence string (case-insensitive).
 
     Returns:
-        DataFrame with columns:
-            id            : sequence identifier
-            _source       : gene/source file
-            n_orfs        : total number of ORFs found
-            longest_orf   : length of the longest ORF in bp (0 if none)
-            mean_orf_len  : mean ORF length (0.0 if none)
+        N content as a float in range [0.0, 1.0].
+    """
+    sequence = sequence.upper()
+    total = len(sequence)
+    if total == 0:
+        return 0.0
+    return sequence.count("N") / total
+
+
+def compute_length(sequence: str) -> int:
+    """Return the length of a DNA sequence in base pairs.
+
+    Args:
+        sequence: DNA sequence string.
+
+    Returns:
+        Integer length of the sequence.
+    """
+    return len(sequence)
+
+
+# ---------------------------------------------------------------------------
+# DataFrame-level analysis
+# ---------------------------------------------------------------------------
+
+def run_quality_analysis(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute QC metrics for all sequences in a DataFrame.
+
+    Adds three new columns to a copy of the input DataFrame:
+        - gc_content : float, GC fraction [0.0, 1.0]
+        - n_content  : float, N fraction  [0.0, 1.0]
+        - length     : int,   sequence length in bp
+
+    Args:
+        df: DataFrame with at least a 'sequence' column.
+
+    Returns:
+        New DataFrame with the three additional metric columns.
+        Raises ValueError if 'sequence' column is missing.
+    """
+    if "sequence" not in df.columns:
+        raise ValueError(
+            "Input DataFrame must contain a 'sequence' column."
+        )
+
+    result = df.copy()
+
+    # Apply per-sequence functions to every row
+    result["gc_content"] = result["sequence"].apply(compute_gc_content)
+    result["n_content"] = result["sequence"].apply(compute_n_content)
+    result["length"] = result["sequence"].apply(compute_length)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Summary statistics
+# ---------------------------------------------------------------------------
+
+def compute_summary_stats(qc_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute summary statistics for GC%, N% and length across all sequences.
+
+    Produces a table with one row per metric and columns:
+        mean, median, std, min, max, q25, q75
+
+    Args:
+        qc_df: DataFrame produced by run_quality_analysis(),
+               must contain 'gc_content', 'n_content', 'length' columns.
+
+    Returns:
+        DataFrame with summary statistics, indexed by metric name.
         Raises ValueError if required columns are missing.
     """
-    required = {"id", "sequence"}
-    missing = required - set(df.columns)
+    required = {"gc_content", "n_content", "length"}
+    missing = required - set(qc_df.columns)
     if missing:
-        raise ValueError(f"Missing columns: {missing}")
+        raise ValueError(
+            f"Missing columns for summary statistics: {missing}. "
+            "Run run_quality_analysis() first."
+        )
+
+    metrics = {
+        "GC content": qc_df["gc_content"],
+        "N content":  qc_df["n_content"],
+        "Length (bp)": qc_df["length"],
+    }
 
     rows = []
-    for _, record in df.iterrows():
-        orfs = find_orfs(str(record["sequence"]), min_length=min_length)
-        n = len(orfs)
-        longest = max((o["length"] for o in orfs), default=0)
-        mean_len = round(sum(o["length"] for o in orfs) / n, 1) if n > 0 else 0.0
-
+    for name, series in metrics.items():
         rows.append({
-            "id":           record["id"],
-            "_source":      record.get("_source", "unknown"),
-            "n_orfs":       n,
-            "longest_orf":  longest,
-            "mean_orf_len": mean_len,
+            "Metric":  name,
+            "Mean":    round(series.mean(), 4),
+            "Median":  round(series.median(), 4),
+            "Std":     round(series.std(), 4),
+            "Min":     round(series.min(), 4),
+            "Max":     round(series.max(), 4),
+            "Q25":     round(series.quantile(0.25), 4),
+            "Q75":     round(series.quantile(0.75), 4),
         })
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).set_index("Metric")
 
 
 # ---------------------------------------------------------------------------
-# Per-gene summary
+# Per-gene group statistics
 # ---------------------------------------------------------------------------
 
-def summarize_by_gene(
-    orf_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """Summarize ORF results per gene/source.
+def compute_gene_stats(qc_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute mean GC%, N% and length grouped by source file (gene).
+
+    Groups sequences by the '_source' column (e.g. brca1_sequences.fasta)
+    and computes mean values for each QC metric per group.
 
     Args:
-        orf_df: DataFrame produced by run_orf_analysis().
+        qc_df: DataFrame produced by run_quality_analysis(),
+               must contain 'gc_content', 'n_content', 'length', '_source'.
 
     Returns:
-        DataFrame with columns:
-            Gene / Source      : gene name
-            Total ORFs         : sum of all ORFs across sequences
-            Mean ORFs/sequence : mean ORF count per sequence
-            Mean longest ORF   : mean of the longest ORF per sequence (bp)
-            Max ORF length     : longest ORF found in this gene (bp)
-        Sorted by Total ORFs descending.
+        DataFrame grouped by '_source' with mean metric columns.
+        Returns empty DataFrame if '_source' column is missing.
     """
-    if orf_df.empty or "_source" not in orf_df.columns:
+    if "_source" not in qc_df.columns:
         return pd.DataFrame()
 
-    rows = []
-    for source, group in orf_df.groupby("_source"):
-        label = (source.replace("_sequences.fasta", "")
-                       .replace(".fasta", "")
-                       .replace(".csv", "")
-                       .replace(".tsv", ""))
-        rows.append({
-            "Gene / Source":       label,
-            "Total ORFs":          int(group["n_orfs"].sum()),
-            "Mean ORFs/sequence":  round(group["n_orfs"].mean(), 2),
-            "Mean longest ORF":    round(group["longest_orf"].mean(), 1),
-            "Max ORF length (bp)": int(group["longest_orf"].max()),
-        })
-
-    result = pd.DataFrame(rows)
-    return result.sort_values("Total ORFs", ascending=False).reset_index(drop=True)
+    grouped = (
+        qc_df
+        .groupby("_source")[["gc_content", "n_content", "length"]]
+        .mean()
+        .round(4)
+        .reset_index()
+    )
+    grouped.rename(columns={"_source": "Gene / Source"}, inplace=True)
+    return grouped
 
 
 # ---------------------------------------------------------------------------
-# Detailed ORF list for a single sequence
+# QC flag helpers
 # ---------------------------------------------------------------------------
 
-def get_sequence_orfs(
-    df: pd.DataFrame,
-    seq_id: str,
-    min_length: int = 100,
-) -> list[dict]:
-    """Get the full list of ORFs for a specific sequence ID.
+def flag_outliers(
+    qc_df: pd.DataFrame,
+    gc_low: float = 0.30,
+    gc_high: float = 0.70,
+    n_warning: float = 0.10,
+) -> pd.DataFrame:
+    """Add a 'qc_flag' column marking sequences that fall outside QC thresholds.
 
-    Used when the user clicks a row to see all ORFs in that sequence.
+    Flag values:
+        'OK'      — sequence passes all thresholds
+        'GC_LOW'  — GC content below gc_low
+        'GC_HIGH' — GC content above gc_high
+        'HIGH_N'  — N content above n_warning
+        Multiple flags are joined with '|' (e.g. 'GC_LOW|HIGH_N')
 
     Args:
-        df:         DataFrame with 'id' and 'sequence' columns.
-        seq_id:     The sequence ID to look up.
-        min_length: Minimum ORF length to report.
+        qc_df:      DataFrame produced by run_quality_analysis().
+        gc_low:     Lower GC content threshold (default 0.30).
+        gc_high:    Upper GC content threshold (default 0.70).
+        n_warning:  N content warning threshold (default 0.10).
 
     Returns:
-        List of ORF dicts (see find_orfs()), or empty list if ID not found.
+        Copy of qc_df with an additional 'qc_flag' column.
     """
-    matches = df[df["id"] == seq_id]
-    if matches.empty:
-        return []
-    sequence = str(matches.iloc[0]["sequence"])
-    return find_orfs(sequence, min_length=min_length)
+    result = qc_df.copy()
+    flags = pd.Series([""] * len(result), index=result.index)
+
+    flags = flags.where(
+        result["gc_content"] >= gc_low,
+        flags + "GC_LOW|",
+    )
+    flags = flags.where(
+        result["gc_content"] <= gc_high,
+        flags + "GC_HIGH|",
+    )
+    flags = flags.where(
+        result["n_content"] <= n_warning,
+        flags + "HIGH_N|",
+    )
+
+    # Strip trailing '|' and replace empty string with 'OK'
+    result["qc_flag"] = flags.str.rstrip("|").replace("", "OK")
+
+    return result
