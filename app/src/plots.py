@@ -206,11 +206,9 @@ def plot_gc_boxplot(
     ax.axhline(30, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
     ax.axhline(70, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
 
-    # Y axis: dynamic range with padding so all boxplots are fully visible
-    min_gc = qc_df["gc_content"].min() * 100
-    max_gc = qc_df["gc_content"].max() * 100
-    padding = max((max_gc - min_gc) * 0.2, 5)
-    ax.set_ylim(bottom=max(0, min_gc - padding), top=min(100, max_gc + padding))
+    # Y axis: let matplotlib auto-scale with 15% margin on each side
+    ax.margins(y=0.15)
+    ax.autoscale(axis="y")
 
     fig.tight_layout()
     return fig
