@@ -368,6 +368,7 @@ def generate_pdf(
     corr_fig=None,
     orf_df=None,
     include_plots: bool = True,
+    plot_selection: dict = None,
 ):
     """Generate a PDF report with all analyses, statistics and plots.
 
@@ -633,25 +634,37 @@ def generate_pdf(
      story.append(Paragraph(next_section("Visualizations"), h1_style))
 
     if include_plots:
-     plot_specs = [
-        ("GC Content Distribution",      plots_module.plot_gc_distribution),
-        ("GC Content by Gene",           plots_module.plot_gc_boxplot),
-        ("Sequence Length Distribution", plots_module.plot_length_distribution),
-        ("GC% vs. Sequence Length",      plots_module.plot_gc_vs_length),
-        ("N Content Distribution",       plots_module.plot_n_content),
-    ]
-    for plot_title, plot_fn in plot_specs:
-        try:
-            fig = plot_fn(qc_df, figsize=(7.0, 3.8))
-            story.append(plot_block(plot_title, fig, width_cm=14))
-        except Exception:
-            pass
+        sel = plot_selection or {}
+        plot_specs = [
+            ("plot_gc_dist",   "GC Content Distribution",
+             plots_module.plot_gc_distribution),
+            ("plot_gc_box",    "GC Content by Gene",
+             plots_module.plot_gc_boxplot),
+            ("plot_length",    "Sequence Length Distribution",
+             plots_module.plot_length_distribution),
+            ("plot_gc_length", "GC% vs. Sequence Length",
+             plots_module.plot_gc_vs_length),
+            ("plot_n",         "N Content Distribution",
+             plots_module.plot_n_content),
+        ]
+        any_plot = False
+        for key, plot_title, plot_fn in plot_specs:
+            # Include if no selection made (default all) or explicitly selected
+            if sel.get(key, True):
+                try:
+                    fig = plot_fn(qc_df, figsize=(7.0, 3.8))
+                    story.append(plot_block(plot_title, fig, width_cm=14))
+                    any_plot = True
+                except Exception:
+                    pass
 
-    if corr_fig is not None:
-        try:
-            story.append(plot_block("Correlation Matrix", corr_fig, width_cm=10))
-        except Exception:
-            pass
+        if corr_fig is not None and sel.get("plot_corr", True):
+            try:
+                story.append(plot_block("Correlation Matrix",
+                                        corr_fig, width_cm=10))
+                any_plot = True
+            except Exception:
+                pass
 
     # ── 5. HUBA Pipeline Report (condensed) ───────────────────────────────────
     if huba_report_text:

@@ -2022,9 +2022,9 @@ class StatisticsTab(ctk.CTkFrame):
                 self.group_a_var.get(), self.group_b_var.get(),
             )
 
-        # Store result for ReportTab
+        # Accumulate results for ReportTab (keep all tests run this session)
         if "error" not in result:
-            self._last_results = [result]
+            self._last_results.append(result)
 
         # Show interpretation
         if "error" in result:
@@ -2410,6 +2410,7 @@ class ReportTab(ctk.CTkFrame):
             has_stats=bool(stat_results),
             has_corr=corr_fig is not None,
             has_orf=orf_df is not None,
+            stat_results=stat_results,
         )
         if selections is None:
             return  # User cancelled
@@ -2431,10 +2432,13 @@ class ReportTab(ctk.CTkFrame):
                 huba_report_loaded=self.huba_report_loaded,
                 huba_report_text=self._huba_report_text
                     if selections["huba_report"] else "",
-                stat_results=stat_results if selections["stat_results"] else [],
+                stat_results=[stat_results[i] for i in
+                    selections.get("stat_results_indices", [])
+                    if i < len(stat_results)],
                 corr_fig=corr_fig if selections["correlation"] else None,
                 orf_df=orf_df if selections["orf"] else None,
-                include_plots=selections["plots"],
+                include_plots=selections.get("plots", True),
+                plot_selection=selections.get("plot_vars", {}),
             )
         except Exception as e:
             self.status_label.configure(text=f"PDF error: {e}", text_color="red")
@@ -2454,22 +2458,26 @@ class ReportTab(ctk.CTkFrame):
         has_stats: bool,
         has_corr: bool,
         has_orf: bool,
+        stat_results: list = None,
     ) -> dict | None:
         """Show a dialog for the user to select which sections to include in PDF.
 
         Args:
-            has_stats: Whether statistical test results are available.
-            has_corr:  Whether correlation matrix is available.
-            has_orf:   Whether ORF analysis results are available.
+            has_stats:    Whether statistical test results are available.
+            has_corr:     Whether correlation matrix is available.
+            has_orf:      Whether ORF analysis results are available.
+            stat_results: List of stat result dicts for individual selection.
 
         Returns:
-            Dict of section keys → bool, or None if user cancelled.
+            Dict of section keys → bool/list, or None if user cancelled.
         """
+        import tkinter.font as tkfont
+        stat_results = stat_results or []
         result = {"cancelled": True}
 
         dialog = tk.Toplevel(self)
         dialog.title("Generate PDF — Select sections")
-        dialog.resizable(False, False)
+        dialog.resizable(False, True)
 
         # Center relative to parent window
         self.winfo_toplevel().update_idletasks()
@@ -2477,18 +2485,18 @@ class ReportTab(ctk.CTkFrame):
         py = self.winfo_toplevel().winfo_y()
         pw = self.winfo_toplevel().winfo_width()
         ph = self.winfo_toplevel().winfo_height()
+        dw = 460
         dialog.update_idletasks()
-        dw, dh = 420, 500
         x = px + (pw - dw) // 2
-        y = py + (ph - dh) // 2
-        dialog.geometry(f"{dw}x{dh}+{x}+{y}")
+        y = py + 80
+        dialog.geometry(f"{dw}x580+{x}+{y}")
 
         tk.Label(
             dialog,
             text="📑  Select sections to include in PDF",
             font=("Segoe UI", 13, "bold"),
             fg="#1F6AA5",
-        ).pack(anchor="w", padx=20, pady=(16, 8))
+        ).pack(anchor="w", padx=20, pady=(16, 4))
 
         tk.Label(
             dialog,
@@ -2497,44 +2505,135 @@ class ReportTab(ctk.CTkFrame):
             fg="gray",
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
-        frame = tk.Frame(dialog, relief="flat", bd=1,
-                         bg="#F9FAFB", padx=12, pady=8)
-        frame.pack(fill="x", padx=20)
+        # Scrollable frame for checkboxes
+        canvas = tk.Canvas(dialog, bd=0, highlightthickness=0)
+        scrollbar = tk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y", padx=(0, 8))
+        canvas.pack(fill="both", expand=True, padx=(20, 0))
 
-        # Section definitions: (key, label, always_available)
-        sections = [
-            ("cover",       "Cover page (dataset info)",        True),
-            ("qc_stats",    "Quality Control statistics",       True),
-            ("gene_stats",  "Per-gene statistics",              True),
-            ("plots",       "QC Visualizations (all plots)",    True),
-            ("stat_results","Statistical test results",         has_stats),
-            ("correlation", "Correlation matrix",               has_corr),
-            ("orf",         "ORF Analysis results",             has_orf),
-            ("huba_report", "HUBA Pipeline Report",             True),
-        ]
+        frame = tk.Frame(canvas, bg="#F9FAFB")
+        frame_id = canvas.create_window((0, 0), window=frame, anchor="nw")
 
+        def on_frame_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        def on_canvas_configure(e):
+            canvas.itemconfig(frame_id, width=e.width)
+        frame.bind("<Configure>", on_frame_configure)
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        BG = "#F9FAFB"
         vars_ = {}
-        for key, label, available in sections:
+
+        def section_header(text, available=True):
+            """Add a bold section checkbox."""
             var = tk.BooleanVar(value=available)
-            vars_[key] = var
             cb = tk.Checkbutton(
-                frame,
-                text=label,
-                variable=var,
-                font=("Segoe UI", 11),
-                bg="#F9FAFB",
+                frame, text=text, variable=var,
+                font=("Segoe UI", 11, "bold"),
+                bg=BG,
                 state="normal" if available else "disabled",
                 fg="black" if available else "gray",
                 anchor="w",
             )
-            cb.pack(fill="x", pady=2)
+            cb.pack(fill="x", pady=(6, 1), padx=4)
+            return var
 
-        btn_frame = tk.Frame(dialog)
-        btn_frame.pack(pady=(16, 12))
+        def sub_checkbox(text, available=True):
+            """Add an indented sub-checkbox."""
+            var = tk.BooleanVar(value=available)
+            cb = tk.Checkbutton(
+                frame, text=f"    {text}", variable=var,
+                font=("Segoe UI", 10),
+                bg=BG,
+                state="normal" if available else "disabled",
+                fg="#374151" if available else "gray",
+                anchor="w",
+            )
+            cb.pack(fill="x", pady=1, padx=4)
+            return var
+
+        def separator():
+            tk.Frame(frame, bg="#E5E7EB", height=1).pack(
+                fill="x", pady=4, padx=4)
+
+        # ── Sections ──────────────────────────────────────────────────────
+        vars_["cover"]      = section_header("Cover page (dataset info)")
+        separator()
+        vars_["qc_stats"]   = section_header("Quality Control statistics")
+        vars_["gene_stats"] = section_header("Per-gene statistics")
+        separator()
+
+        # Visualizations with individual plot selection
+        vars_["plots"] = section_header("QC Visualizations")
+        plot_names = [
+            ("plot_gc_dist",    "GC Content Distribution"),
+            ("plot_gc_box",     "GC Content by Gene (boxplot)"),
+            ("plot_length",     "Sequence Length Distribution"),
+            ("plot_gc_length",  "GC% vs. Sequence Length"),
+            ("plot_n",          "N Content Distribution"),
+            ("plot_corr",       "Correlation Matrix"),
+        ]
+        plot_vars = {}
+        for key, label in plot_names:
+            available = True if key != "plot_corr" else has_corr
+            plot_vars[key] = sub_checkbox(label, available=available)
+        vars_["plot_vars"] = plot_vars
+
+        # Toggle all plots when parent checkbox changes
+        def toggle_plots(*args):
+            state = vars_["plots"].get()
+            for k, v in plot_vars.items():
+                if k != "plot_corr" or has_corr:
+                    v.set(state)
+        vars_["plots"].trace_add("write", toggle_plots)
+
+        separator()
+
+        # Statistical tests with individual selection
+        vars_["stat_section"] = section_header(
+            "Statistical test results", available=has_stats)
+        stat_vars = {}
+        if stat_results:
+            for i, res in enumerate(stat_results):
+                test_name = res.get("test", f"Test {i+1}")
+                metric = res.get("metric", "")
+                label = f"{test_name} ({metric})"
+                stat_vars[i] = sub_checkbox(label, available=True)
+        else:
+            sub_checkbox("No tests run yet", available=False)
+        vars_["stat_vars"] = stat_vars
+
+        def toggle_stats(*args):
+            state = vars_["stat_section"].get()
+            for v in stat_vars.values():
+                v.set(state)
+        vars_["stat_section"].trace_add("write", toggle_stats)
+
+        separator()
+        vars_["orf"]         = section_header("ORF Analysis results",
+                                               available=has_orf)
+        separator()
+        vars_["huba_report"] = section_header("HUBA Pipeline Report")
+
+        # ── Buttons ───────────────────────────────────────────────────────
+        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame.pack(fill="x", pady=(8, 12), padx=20)
 
         def on_generate():
             result["cancelled"] = False
-            result.update({k: v.get() for k, v in vars_.items()})
+            result["cover"]       = vars_["cover"].get()
+            result["qc_stats"]    = vars_["qc_stats"].get()
+            result["gene_stats"]  = vars_["gene_stats"].get()
+            result["plots"]       = vars_["plots"].get()
+            result["plot_vars"]   = {k: v.get() for k, v in plot_vars.items()}
+            result["stat_results_indices"] = [
+                i for i, v in stat_vars.items() if v.get()
+            ]
+            result["correlation"] = plot_vars.get("plot_corr",
+                                    tk.BooleanVar(value=False)).get()
+            result["orf"]         = vars_["orf"].get()
+            result["huba_report"] = vars_["huba_report"].get()
             dialog.destroy()
 
         def on_cancel():
@@ -2543,14 +2642,14 @@ class ReportTab(ctk.CTkFrame):
         tk.Button(
             btn_frame, text="Cancel", width=10,
             font=("Segoe UI", 11), command=on_cancel,
-        ).pack(side="left", padx=8)
+        ).pack(side="left")
 
         tk.Button(
             btn_frame, text="Generate PDF", width=14,
             font=("Segoe UI", 11, "bold"),
             bg="#1F6AA5", fg="white",
             command=on_generate,
-        ).pack(side="left", padx=8)
+        ).pack(side="right")
 
         dialog.grab_set()
         self.wait_window(dialog)
