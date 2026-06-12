@@ -369,6 +369,7 @@ def generate_pdf(
     orf_df=None,
     include_plots: bool = True,
     plot_selection: dict = None,
+    motif_results: list = None,
 ):
     """Generate a PDF report with all analyses, statistics and plots.
 
@@ -627,6 +628,34 @@ def generate_pdf(
         t = Table(orf_table_data, colWidths=[5*cm, 3.5*cm, 4*cm, 3.5*cm])
         t.setStyle(make_table_style())
         story.append(KeepTogether([t, Spacer(1, 0.5*cm)]))
+
+    # ── Motif Analysis Results ───────────────────────────────────────────────
+    if motif_results:
+        story.append(Paragraph(next_section("Motif Analysis Results"), h1_style))
+        for res in motif_results:
+            motif = res.get("motif", "")
+            total = res.get("total", 0)
+            summary_df = res.get("summary_df")
+
+            story.append(Paragraph(
+                f"Motif: <b>{motif}</b> — Total occurrences: <b>{total}</b>",
+                body_style,
+            ))
+
+            if summary_df is not None and not summary_df.empty:
+                motif_data = [["Gene / Source", "Total occurrences",
+                               "Sequences with motif", "Mean per sequence"]]
+                for _, row in summary_df.iterrows():
+                    motif_data.append([
+                        str(row["Gene / Source"]),
+                        str(row["Total occurrences"]),
+                        str(row["Sequences with motif"]),
+                        str(row["Mean per sequence"]),
+                    ])
+                t = Table(motif_data,
+                          colWidths=[4.5*cm, 3.5*cm, 3.5*cm, 4*cm])
+                t.setStyle(make_table_style())
+                story.append(KeepTogether([t, Spacer(1, 0.4*cm)]))
 
     # ── 5. Visualizations ─────────────────────────────────────────────────────
     if include_plots:

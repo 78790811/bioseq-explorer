@@ -762,6 +762,7 @@ class MotifAnalysisTab(ctk.CTkFrame):
         self._motif_module = None
         self._plots = None
         self._current_fig = None   # Current bar chart figure
+        self._motif_results = []   # Accumulated motif search results
 
         self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
         self._placeholder.pack(fill="both", expand=True)
@@ -793,6 +794,7 @@ class MotifAnalysisTab(ctk.CTkFrame):
         self._motif_module = None
         self._plots = None
         self._current_fig = None
+        self._motif_results = []
         self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
         self._placeholder.pack(fill="both", expand=True)
         ctk.CTkLabel(self._placeholder, text="Motif Analysis",
@@ -1096,6 +1098,14 @@ class MotifAnalysisTab(ctk.CTkFrame):
         self.active_motif_label.configure(
             text=f"Motif: {motif}   |   Total occurrences: {total}"
         )
+
+        # Accumulate result for report
+        self._motif_results.append({
+            "motif":      motif,
+            "total":      total,
+            "summary_df": summary_df,
+            "search_df":  search_df,
+        })
 
         # Populate summary table
         self.summary_tree.delete(*self.summary_tree.get_children())
@@ -2404,6 +2414,8 @@ class ReportTab(ctk.CTkFrame):
         stat_results = getattr(stats_tab, "_last_results", [])             if stats_tab else []
         corr_fig = getattr(stats_tab, "_corr_fig", None)             if stats_tab else None
         orf_df = getattr(orf_tab, "orf_df", None)             if orf_tab else None
+        motif_tab = getattr(app, "motif_tab", None)
+        motif_results = getattr(motif_tab, "_motif_results", [])             if motif_tab else []
 
         # Show section selector dialog
         selections = self._show_pdf_section_dialog(
@@ -2411,6 +2423,9 @@ class ReportTab(ctk.CTkFrame):
             has_corr=corr_fig is not None,
             has_orf=orf_df is not None,
             stat_results=stat_results,
+            motif_results=getattr(
+                getattr(app, "motif_tab", None), "_motif_results", []
+            ),
         )
         if selections is None:
             return  # User cancelled
@@ -2437,6 +2452,9 @@ class ReportTab(ctk.CTkFrame):
                     if i < len(stat_results)],
                 corr_fig=corr_fig if selections["correlation"] else None,
                 orf_df=orf_df if selections["orf"] else None,
+                motif_results=[motif_results[i] for i in
+                    selections.get("motif_indices", [])
+                    if i < len(motif_results)],
                 include_plots=selections.get("plots", True),
                 plot_selection=selections.get("plot_vars", {}),
             )
@@ -2459,6 +2477,7 @@ class ReportTab(ctk.CTkFrame):
         has_corr: bool,
         has_orf: bool,
         stat_results: list = None,
+        motif_results: list = None,
     ) -> dict | None:
         """Show a dialog for the user to select which sections to include in PDF.
 
@@ -2473,6 +2492,7 @@ class ReportTab(ctk.CTkFrame):
         """
         import tkinter.font as tkfont
         stat_results = stat_results or []
+        motif_results = motif_results or []
         result = {"cancelled": True}
 
         dialog = tk.Toplevel(self)
@@ -2614,6 +2634,27 @@ class ReportTab(ctk.CTkFrame):
         vars_["orf"]         = section_header("ORF Analysis results",
                                                available=has_orf)
         separator()
+
+        # Motif Analysis with individual motif selection
+        has_motif = bool(motif_results)
+        vars_["motif_section"] = section_header(
+            "Motif Analysis results", available=has_motif)
+        motif_vars = {}
+        if motif_results:
+            for i, res in enumerate(motif_results):
+                label = f"Motif: {res['motif']} ({res['total']} occurrences)"
+                motif_vars[i] = sub_checkbox(label, available=True)
+        else:
+            sub_checkbox("No motif searches run yet", available=False)
+        vars_["motif_vars"] = motif_vars
+
+        def toggle_motifs(*args):
+            state = vars_["motif_section"].get()
+            for v in motif_vars.values():
+                v.set(state)
+        vars_["motif_section"].trace_add("write", toggle_motifs)
+
+        separator()
         vars_["huba_report"] = section_header("HUBA Pipeline Report")
 
         # ── Buttons ───────────────────────────────────────────────────────
@@ -2633,6 +2674,9 @@ class ReportTab(ctk.CTkFrame):
             result["correlation"] = plot_vars.get("plot_corr",
                                     tk.BooleanVar(value=False)).get()
             result["orf"]         = vars_["orf"].get()
+            result["motif_indices"] = [
+                i for i, v in motif_vars.items() if v.get()
+            ]
             result["huba_report"] = vars_["huba_report"].get()
             dialog.destroy()
 
