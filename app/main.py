@@ -422,6 +422,10 @@ class QualityControlTab(ctk.CTkFrame):
         Returns:
             None
         """
+        # Guard: build UI only once
+        if self.qc_df is not None:
+            return
+
         import importlib.util as _ilu
 
         # Load analyzer module from app/src/analyzer.py
@@ -435,10 +439,6 @@ class QualityControlTab(ctk.CTkFrame):
         _spec2 = _ilu.spec_from_file_location("plots", _plt_path)
         plots = _ilu.module_from_spec(_spec2)
         _spec2.loader.exec_module(plots)
-
-        # Compute QC metrics
-        if self.qc_df is not None:
-            return
 
         try:
             self.qc_df = analyzer.run_quality_analysis(df)
@@ -1537,6 +1537,10 @@ class StatisticsTab(ctk.CTkFrame):
         Returns:
             None
         """
+        # Guard: build UI only once
+        if self.qc_df is not None:
+            return
+
         import importlib.util as _ilu
 
         # Load analyzer to get QC metrics
@@ -1556,9 +1560,6 @@ class StatisticsTab(ctk.CTkFrame):
         _spec3 = _ilu.spec_from_file_location("plots", _plt_path)
         self._plots = _ilu.module_from_spec(_spec3)
         _spec3.loader.exec_module(self._plots)
-
-        if self.qc_df is not None:
-            return
 
         try:
             self.qc_df = analyzer.run_quality_analysis(df)
@@ -1958,6 +1959,10 @@ class ReportTab(ctk.CTkFrame):
         Returns:
             None
         """
+        # Guard: build UI only once
+        if self.qc_df is not None:
+            return
+
         import importlib.util as _ilu
 
         # Load required modules
@@ -1972,10 +1977,6 @@ class ReportTab(ctk.CTkFrame):
             mod = _ilu.module_from_spec(spec)
             spec.loader.exec_module(mod)
             setattr(self, attr, mod)
-
-        # Compute QC metrics
-        if self.qc_df is not None:
-            return
 
         try:
             self.qc_df = self._analyzer.run_quality_analysis(df)
