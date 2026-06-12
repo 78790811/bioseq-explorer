@@ -2388,7 +2388,7 @@ class ReportTab(ctk.CTkFrame):
         self._show_preview_placeholder()
 
     def _generate_pdf(self) -> None:
-        """Generate a PDF report with all analyses, statistics and plots.
+        """Show section selector dialog then generate PDF report.
 
         Args:
             None
@@ -2396,9 +2396,25 @@ class ReportTab(ctk.CTkFrame):
         Returns:
             None
         """
-        output_dir = Path(self.output_dir_var.get())
-        stat_results = self._stat_results if self.include_stats_var.get() else []
+        # Get live references from sibling tabs
+        app = self.winfo_toplevel()
+        stats_tab = getattr(app, "stats_tab", None)
+        orf_tab   = getattr(app, "orf_tab", None)
 
+        stat_results = getattr(stats_tab, "_last_results", [])             if stats_tab else []
+        corr_fig = getattr(stats_tab, "_corr_fig", None)             if stats_tab else None
+        orf_df = getattr(orf_tab, "orf_df", None)             if orf_tab else None
+
+        # Show section selector dialog
+        selections = self._show_pdf_section_dialog(
+            has_stats=bool(stat_results),
+            has_corr=corr_fig is not None,
+            has_orf=orf_df is not None,
+        )
+        if selections is None:
+            return  # User cancelled
+
+        output_dir = Path(self.output_dir_var.get())
         self.status_label.configure(
             text="Generating PDF...", text_color="gray"
         )
@@ -2407,15 +2423,18 @@ class ReportTab(ctk.CTkFrame):
         try:
             pdf_path = self._report_module.generate_pdf(
                 qc_df=self.qc_df,
-                summary_df=self.summary_df,
-                gene_df=self.gene_df,
+                summary_df=self.summary_df if selections["qc_stats"] else None,
+                gene_df=self.gene_df if selections["gene_stats"] else None,
                 plots_module=self._plots,
                 output_dir=output_dir,
                 dataset_path=self.dataset_path,
                 huba_report_loaded=self.huba_report_loaded,
-                huba_report_text=self._huba_report_text,
-                stat_results=stat_results,
-                corr_fig=self._corr_fig,
+                huba_report_text=self._huba_report_text
+                    if selections["huba_report"] else "",
+                stat_results=stat_results if selections["stat_results"] else [],
+                corr_fig=corr_fig if selections["correlation"] else None,
+                orf_df=orf_df if selections["orf"] else None,
+                include_plots=selections["plots"],
             )
         except Exception as e:
             self.status_label.configure(text=f"PDF error: {e}", text_color="red")
@@ -2429,6 +2448,116 @@ class ReportTab(ctk.CTkFrame):
             "PDF generated",
             f"PDF report saved successfully:\n{pdf_path}",
         )
+
+    def _show_pdf_section_dialog(
+        self,
+        has_stats: bool,
+        has_corr: bool,
+        has_orf: bool,
+    ) -> dict | None:
+        """Show a dialog for the user to select which sections to include in PDF.
+
+        Args:
+            has_stats: Whether statistical test results are available.
+            has_corr:  Whether correlation matrix is available.
+            has_orf:   Whether ORF analysis results are available.
+
+        Returns:
+            Dict of section keys → bool, or None if user cancelled.
+        """
+        result = {"cancelled": True}
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Generate PDF — Select sections")
+        dialog.resizable(False, False)
+
+        # Center relative to parent window
+        self.winfo_toplevel().update_idletasks()
+        px = self.winfo_toplevel().winfo_x()
+        py = self.winfo_toplevel().winfo_y()
+        pw = self.winfo_toplevel().winfo_width()
+        ph = self.winfo_toplevel().winfo_height()
+        dialog.update_idletasks()
+        dw, dh = 420, 500
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        dialog.geometry(f"{dw}x{dh}+{x}+{y}")
+
+        tk.Label(
+            dialog,
+            text="📑  Select sections to include in PDF",
+            font=("Segoe UI", 13, "bold"),
+            fg="#1F6AA5",
+        ).pack(anchor="w", padx=20, pady=(16, 8))
+
+        tk.Label(
+            dialog,
+            text="Greyed out sections have no data available.",
+            font=("Segoe UI", 9),
+            fg="gray",
+        ).pack(anchor="w", padx=20, pady=(0, 8))
+
+        frame = tk.Frame(dialog, relief="flat", bd=1,
+                         bg="#F9FAFB", padx=12, pady=8)
+        frame.pack(fill="x", padx=20)
+
+        # Section definitions: (key, label, always_available)
+        sections = [
+            ("cover",       "Cover page (dataset info)",        True),
+            ("qc_stats",    "Quality Control statistics",       True),
+            ("gene_stats",  "Per-gene statistics",              True),
+            ("plots",       "QC Visualizations (all plots)",    True),
+            ("stat_results","Statistical test results",         has_stats),
+            ("correlation", "Correlation matrix",               has_corr),
+            ("orf",         "ORF Analysis results",             has_orf),
+            ("huba_report", "HUBA Pipeline Report",             True),
+        ]
+
+        vars_ = {}
+        for key, label, available in sections:
+            var = tk.BooleanVar(value=available)
+            vars_[key] = var
+            cb = tk.Checkbutton(
+                frame,
+                text=label,
+                variable=var,
+                font=("Segoe UI", 11),
+                bg="#F9FAFB",
+                state="normal" if available else "disabled",
+                fg="black" if available else "gray",
+                anchor="w",
+            )
+            cb.pack(fill="x", pady=2)
+
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=(16, 12))
+
+        def on_generate():
+            result["cancelled"] = False
+            result.update({k: v.get() for k, v in vars_.items()})
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        tk.Button(
+            btn_frame, text="Cancel", width=10,
+            font=("Segoe UI", 11), command=on_cancel,
+        ).pack(side="left", padx=8)
+
+        tk.Button(
+            btn_frame, text="Generate PDF", width=14,
+            font=("Segoe UI", 11, "bold"),
+            bg="#1F6AA5", fg="white",
+            command=on_generate,
+        ).pack(side="left", padx=8)
+
+        dialog.grab_set()
+        self.wait_window(dialog)
+
+        if result.get("cancelled", True):
+            return None
+        return result
 
     def _browse_output_dir(self) -> None:
         """Open directory dialog to choose report output location.

@@ -366,6 +366,8 @@ def generate_pdf(
     huba_report_text: str = "",
     stat_results=None,
     corr_fig=None,
+    orf_df=None,
+    include_plots: bool = True,
 ):
     """Generate a PDF report with all analyses, statistics and plots.
 
@@ -485,6 +487,12 @@ def generate_pdf(
     dataset_name = Path(dataset_path).name
 
     story = []
+    section_num = [0]  # mutable counter for dynamic section numbering
+
+    def next_section(title: str) -> str:
+        """Return next numbered section title."""
+        section_num[0] += 1
+        return f"{section_num[0]}. {title}"
 
     # ── Cover ────────────────────────────────────────────────────────────────
     story.append(Paragraph("BioSeq Explorer", title_style))
@@ -519,7 +527,8 @@ def generate_pdf(
     story.append(Spacer(1, 0.5*cm))
 
     # ── 1. QC Summary Statistics ─────────────────────────────────────────────
-    story.append(Paragraph("1. Quality Control — Summary Statistics", h1_style))
+    if summary_df is not None:
+     story.append(Paragraph(next_section("Quality Control — Summary Statistics"), h1_style))
     qc_data = [["Metric", "Mean", "Median", "Std", "Min", "Max", "Q25", "Q75"]]
     for metric_name, row in summary_df.iterrows():
         fmt = (lambda v: f"{v*100:.2f}%") if "content" in metric_name.lower()             else (lambda v: f"{v:.1f}")
@@ -533,7 +542,7 @@ def generate_pdf(
     story.append(Spacer(1, 0.5*cm))
 
     # ── 2. Per-Gene Statistics ────────────────────────────────────────────────
-    if not gene_df.empty:
+    if gene_df is not None and not gene_df.empty:
         gene_data = [["Gene / Source", "Mean GC%", "Mean N%", "Mean Length (bp)"]]
         for _, row in gene_df.iterrows():
             gene_data.append([
@@ -547,7 +556,7 @@ def generate_pdf(
 
         # KeepTogether keeps header + table on same page if it fits
         gene_block = [
-            Paragraph("2. Per-Gene Statistics", h1_style),
+            Paragraph(next_section("Per-Gene Statistics"), h1_style),
             t,
             Spacer(1, 0.5*cm),
         ]
@@ -558,9 +567,8 @@ def generate_pdf(
             story.extend(gene_block)
 
     # ── 3. Statistical Test Results ───────────────────────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph("3. Statistical Test Results", h1_style))
     if stat_results:
+        story.append(Paragraph(next_section("Statistical Test Results"), h1_style))
         for result in stat_results:
             if "error" in result:
                 story.append(Paragraph(f"Error: {result['error']}", body_style))
@@ -579,19 +587,53 @@ def generate_pdf(
                 Paragraph(note, body_style),
                 Spacer(1, 0.3*cm),
             ]))
-    else:
+        story.append(Spacer(1, 0.3*cm))
+
+    # ── 4. ORF Analysis Results ──────────────────────────────────────────────
+    if orf_df is not None and not orf_df.empty:
+        import importlib.util as _ilu2
+        story.append(Paragraph(next_section("ORF Analysis Results"), h1_style))
+
+        # Summary stats
+        total_orfs = int(orf_df["n_orfs"].sum())
+        seqs_with_orfs = int((orf_df["n_orfs"] > 0).sum())
         story.append(Paragraph(
-            "No statistical tests were run. To include test results, "
-            "run a test in the Statistics tab before generating the report.",
-            meta_style,
+            f"Total ORFs found: <b>{total_orfs}</b> &nbsp;&nbsp; "
+            f"Sequences with ORFs: <b>{seqs_with_orfs}</b> / {len(orf_df)}",
+            body_style,
         ))
-    story.append(Spacer(1, 0.3*cm))
+        story.append(Spacer(1, 0.3*cm))
 
-    # ── 4. Visualizations ─────────────────────────────────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph("4. Visualizations", h1_style))
+        # Per-gene ORF summary table
+        from collections import defaultdict
+        gene_orfs = defaultdict(lambda: {"total": 0, "longest": 0, "count": 0})
+        for _, row in orf_df.iterrows():
+            src = str(row["_source"]).replace("_sequences.fasta","")                 .replace(".fasta","").replace(".csv","").replace(".tsv","")
+            gene_orfs[src]["total"] += int(row["n_orfs"])
+            gene_orfs[src]["longest"] = max(
+                gene_orfs[src]["longest"], int(row["longest_orf"]))
+            gene_orfs[src]["count"] += 1
 
-    plot_specs = [
+        orf_table_data = [["Gene / Source", "Total ORFs",
+                           "Longest ORF (bp)", "Sequences"]]
+        for gene, vals in sorted(gene_orfs.items(),
+                                 key=lambda x: x[1]["total"], reverse=True):
+            orf_table_data.append([
+                gene, str(vals["total"]),
+                str(vals["longest"]), str(vals["count"]),
+            ])
+
+        t = Table(orf_table_data, colWidths=[5*cm, 3.5*cm, 4*cm, 3.5*cm])
+        t.setStyle(make_table_style())
+        story.append(KeepTogether([t, Spacer(1, 0.5*cm)]))
+
+    # ── 5. Visualizations ─────────────────────────────────────────────────────
+    if include_plots:
+     story.append(PageBreak())
+     story.append(Paragraph(next_section("Visualizations"), h1_style))
+
+    if include_plots:
+     plot_specs = [
         ("GC Content Distribution",      plots_module.plot_gc_distribution),
         ("GC Content by Gene",           plots_module.plot_gc_boxplot),
         ("Sequence Length Distribution", plots_module.plot_length_distribution),
@@ -614,7 +656,7 @@ def generate_pdf(
     # ── 5. HUBA Pipeline Report (condensed) ───────────────────────────────────
     if huba_report_text:
         story.append(PageBreak())
-        story.append(Paragraph("5. HUBA Pipeline Report", h1_style))
+        story.append(Paragraph(next_section("HUBA Pipeline Report"), h1_style))
         story.append(Paragraph(
             "Data preparation summary generated by HUBA pipeline:",
             body_style))
