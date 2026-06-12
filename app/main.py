@@ -1099,13 +1099,21 @@ class MotifAnalysisTab(ctk.CTkFrame):
             text=f"Motif: {motif}   |   Total occurrences: {total}"
         )
 
-        # Accumulate result for report
-        self._motif_results.append({
+        # Accumulate result for report — update if motif already exists
+        existing = next(
+            (i for i, r in enumerate(self._motif_results)
+             if r["motif"] == motif), None
+        )
+        entry = {
             "motif":      motif,
             "total":      total,
             "summary_df": summary_df,
             "search_df":  search_df,
-        })
+        }
+        if existing is not None:
+            self._motif_results[existing] = entry
+        else:
+            self._motif_results.append(entry)
 
         # Populate summary table
         self.summary_tree.delete(*self.summary_tree.get_children())
@@ -2032,9 +2040,19 @@ class StatisticsTab(ctk.CTkFrame):
                 self.group_a_var.get(), self.group_b_var.get(),
             )
 
-        # Accumulate results for ReportTab (keep all tests run this session)
+        # Accumulate results — update if same test+metric+groups already exists
         if "error" not in result:
-            self._last_results.append(result)
+            def _result_key(r):
+                return (r.get("test"), r.get("metric"),
+                        r.get("group_a"), r.get("group_b"))
+            existing = next(
+                (i for i, r in enumerate(self._last_results)
+                 if _result_key(r) == _result_key(result)), None
+            )
+            if existing is not None:
+                self._last_results[existing] = result
+            else:
+                self._last_results.append(result)
 
         # Show interpretation
         if "error" in result:

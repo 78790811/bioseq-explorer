@@ -637,10 +637,12 @@ def generate_pdf(
             total = res.get("total", 0)
             summary_df = res.get("summary_df")
 
-            story.append(Paragraph(
-                f"Motif: <b>{motif}</b> — Total occurrences: <b>{total}</b>",
-                body_style,
-            ))
+            motif_block = [
+                Paragraph(
+                    f"Motif: <b>{motif}</b> — Total occurrences: <b>{total}</b>",
+                    body_style,
+                )
+            ]
 
             if summary_df is not None and not summary_df.empty:
                 motif_data = [["Gene / Source", "Total occurrences",
@@ -655,7 +657,11 @@ def generate_pdf(
                 t = Table(motif_data,
                           colWidths=[4.5*cm, 3.5*cm, 3.5*cm, 4*cm])
                 t.setStyle(make_table_style())
-                story.append(KeepTogether([t, Spacer(1, 0.4*cm)]))
+                motif_block.append(t)
+
+            motif_block.append(Spacer(1, 0.5*cm))
+            # KeepTogether keeps title + table on the same page
+            story.append(KeepTogether(motif_block))
 
     # ── 5. Visualizations ─────────────────────────────────────────────────────
     if include_plots:
