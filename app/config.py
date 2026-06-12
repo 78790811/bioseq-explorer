@@ -59,14 +59,14 @@ FONT_SIZE_SMALL = 11
 # Common regulatory and structural motifs used in motif search tab.
 # Keys are display names, values are the motif sequences.
 PREDEFINED_MOTIFS = {
-    "Start codon          ATG":     "ATG",
-    "TATA box             TATAAA":  "TATAAA",
-    "CCAAT box            CCAAT":   "CCAAT",
-    "GC box               GGGCGG":  "GGGCGG",
-    "Kozak consensus      GCCACC":  "GCCACC",
-    "Splice donor         GT":      "GT",
-    "Splice acceptor      AG":      "AG",
-    "CpG site             CG":      "CG",
+    "Start codon (ATG)":     "ATG",
+    "TATA box (TATAAA)":     "TATAAA",
+    "CCAAT box (CCAAT)":     "CCAAT",
+    "GC box (GGGCGG)":       "GGGCGG",
+    "Kozak consensus (GCCACC)": "GCCACC",
+    "Splice donor (GT)":     "GT",
+    "Splice acceptor (AG)":  "AG",
+    "CpG site (CG)":         "CG",
 }
 
 # ---------------------------------------------------------------------------
