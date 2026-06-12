@@ -206,9 +206,18 @@ def plot_gc_boxplot(
     ax.axhline(30, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
     ax.axhline(70, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
 
-    # Y axis: let matplotlib auto-scale with 15% margin on each side
-    ax.margins(y=0.15)
-    ax.autoscale(axis="y")
+    # Y axis: compute bounds from actual whisker extents with generous padding
+    all_gc = qc_df["gc_content"] * 100
+    q1 = all_gc.quantile(0.25)
+    q3 = all_gc.quantile(0.75)
+    iqr = q3 - q1
+    whisker_low = max(0, all_gc.min() - 1.5 * iqr)
+    whisker_high = min(100, all_gc.max() + 1.5 * iqr)
+    span = whisker_high - whisker_low
+    ax.set_ylim(
+        bottom=max(0, whisker_low - span * 0.25),
+        top=min(100, whisker_high + span * 0.10),
+    )
 
     fig.tight_layout()
     return fig

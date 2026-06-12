@@ -310,11 +310,14 @@ class HomeTab(ctk.CTkFrame):
         app.on_dataset_loaded(self.df)
 
         # Pass dataset metadata to ReportTab
-        huba_loaded = (self.dataset_path.parent.parent / "REPORT.md").exists()
+        huba_report_path = self.dataset_path.parent.parent / "REPORT.md"
+        huba_loaded = huba_report_path.exists()
+        huba_text = huba_report_path.read_text(encoding="utf-8")             if huba_loaded else ""
         app.report_tab.set_dataset_info(
             dataset_path=str(self.dataset_path),
             huba_loaded=huba_loaded,
         )
+        app.report_tab._huba_report_text = huba_text
 
     def _populate_table(self) -> None:
         """Fill the Treeview with data from self.df.
@@ -2136,6 +2139,7 @@ class ReportTab(ctk.CTkFrame):
         self._stats = None
         self._corr_fig = None       # Injected from StatisticsTab if available
         self._stat_results = []     # Injected from StatisticsTab if available
+        self._huba_report_text = "" # HUBA REPORT.md text for PDF export
 
         self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
         self._placeholder.pack(fill="both", expand=True)
@@ -2341,14 +2345,29 @@ class ReportTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
         ).grid(row=1, column=0, columnspan=3, padx=12, pady=(0, 10), sticky="w")
 
-        # --- Generate button ---
+        # --- Generate buttons ---
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=(0, 8))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+
         ctk.CTkButton(
-            self,
-            text="📄  Generate Report",
+            btn_row,
+            text="📄  Generate Markdown",
             height=44,
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             command=self._generate,
-        ).pack(fill="x", padx=16, pady=(0, 8))
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        ctk.CTkButton(
+            btn_row,
+            text="📑  Generate PDF",
+            height=44,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="#2CA02C",
+            hover_color="#1a7a1a",
+            command=self._generate_pdf,
+        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
         # --- Preview area ---
         ctk.CTkLabel(
@@ -2367,6 +2386,49 @@ class ReportTab(ctk.CTkFrame):
         self.preview_box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
         self._show_preview_placeholder()
+
+    def _generate_pdf(self) -> None:
+        """Generate a PDF report with all analyses, statistics and plots.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        output_dir = Path(self.output_dir_var.get())
+        stat_results = self._stat_results if self.include_stats_var.get() else []
+
+        self.status_label.configure(
+            text="Generating PDF...", text_color="gray"
+        )
+        self.update()
+
+        try:
+            pdf_path = self._report_module.generate_pdf(
+                qc_df=self.qc_df,
+                summary_df=self.summary_df,
+                gene_df=self.gene_df,
+                plots_module=self._plots,
+                output_dir=output_dir,
+                dataset_path=self.dataset_path,
+                huba_report_loaded=self.huba_report_loaded,
+                huba_report_text=self._huba_report_text,
+                stat_results=stat_results,
+                corr_fig=self._corr_fig,
+            )
+        except Exception as e:
+            self.status_label.configure(text=f"PDF error: {e}", text_color="red")
+            messagebox.showerror("PDF Error", f"Could not generate PDF:\n{e}")
+            return
+
+        self.status_label.configure(
+            text=f"✓ PDF saved to: {pdf_path}", text_color="green"
+        )
+        messagebox.showinfo(
+            "PDF generated",
+            f"PDF report saved successfully:\n{pdf_path}",
+        )
 
     def _browse_output_dir(self) -> None:
         """Open directory dialog to choose report output location.
