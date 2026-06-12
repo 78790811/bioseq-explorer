@@ -489,6 +489,21 @@ class QualityControlTab(ctk.CTkFrame):
             justify="center",
         ).pack(pady=(8, 0))
 
+    def reset(self) -> None:
+        """Reset tab to placeholder state for a new dataset load.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.qc_df = None
+        self._figures = {}
+        self._build_placeholder()
+
     def load_data(self, df) -> None:
         """Receive the loaded DataFrame, compute QC metrics and build the UI.
 
@@ -759,6 +774,29 @@ class MotifAnalysisTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
+
+    def reset(self) -> None:
+        """Reset tab to placeholder state for a new dataset load.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.df = None
+        self._motif_module = None
+        self._plots = None
+        self._current_fig = None
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
+        ctk.CTkLabel(self._placeholder, text="Motif Analysis",
+            font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(40, 8))
+        ctk.CTkLabel(self._placeholder,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13), text_color="gray").pack()
 
     def load_data(self, df) -> None:
         """Receive DataFrame and build the Motif Analysis UI.
@@ -1145,6 +1183,30 @@ class ORFAnalysisTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=13),
             text_color="gray",
         ).pack()
+
+    def reset(self) -> None:
+        """Reset tab to placeholder state for a new dataset load.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.df = None
+        self.orf_df = None
+        self._orf_module = None
+        self._plots = None
+        self._current_figs = {}
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
+        ctk.CTkLabel(self._placeholder, text="ORF Analysis",
+            font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(40, 8))
+        ctk.CTkLabel(self._placeholder,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13), text_color="gray").pack()
 
     def load_data(self, df) -> None:
         """Receive DataFrame and build the ORF Analysis UI.
@@ -1645,6 +1707,29 @@ class StatisticsTab(ctk.CTkFrame):
             wraplength=500,
             justify="center",
         ).pack(pady=(8, 0))
+    def reset(self) -> None:
+        """Reset tab to placeholder state for a new dataset load.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.qc_df = None
+        self._stats = None
+        self._plots = None
+        self._last_results = []
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
+        ctk.CTkLabel(self._placeholder, text="Statistics",
+            font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(40, 8))
+        ctk.CTkLabel(self._placeholder,
+            text="Load a dataset in the Home tab to enable this analysis.",
+            font=ctk.CTkFont(size=13), text_color="gray").pack()
+
     def load_data(self, df) -> None:
         """Receive DataFrame, compute QC metrics and build the Statistics UI.
 
@@ -2101,6 +2186,36 @@ class ReportTab(ctk.CTkFrame):
             wraplength=500,
             justify="center",
         ).pack(pady=(8, 0))
+    def reset(self) -> None:
+        """Reset tab to placeholder state for a new dataset load.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for widget in self.winfo_children():
+            widget.destroy()
+        self.qc_df = None
+        self.summary_df = None
+        self.gene_df = None
+        self.dataset_path = ""
+        self.huba_report_loaded = False
+        self._report_module = None
+        self._analyzer = None
+        self._plots = None
+        self._stats = None
+        self._corr_fig = None
+        self._stat_results = []
+        self._placeholder = ctk.CTkFrame(self, fg_color="transparent")
+        self._placeholder.pack(fill="both", expand=True)
+        ctk.CTkLabel(self._placeholder, text="Report",
+            font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(40, 8))
+        ctk.CTkLabel(self._placeholder,
+            text="Load a dataset in the Home tab to enable report generation.",
+            font=ctk.CTkFont(size=13), text_color="gray").pack()
+
     def load_data(self, df) -> None:
         """Receive DataFrame, prepare data and build the Report UI.
 
@@ -2460,7 +2575,7 @@ class BioSeqExplorerApp(ctk.CTk):
         """Propagate the loaded DataFrame to all analysis tabs.
 
         Called by HomeTab after a dataset is successfully loaded.
-        Each tab handles its own error display when the user visits it.
+        Resets all tabs first to clear any previous dataset state.
 
         Args:
             df: pandas DataFrame with sequence data.
@@ -2468,6 +2583,14 @@ class BioSeqExplorerApp(ctk.CTk):
         Returns:
             None
         """
+        # Reset all tabs to clear previous dataset
+        for tab in [
+            self.qc_tab, self.motif_tab, self.orf_tab,
+            self.stats_tab, self.report_tab,
+        ]:
+            tab.reset()
+
+        # Load new data into each tab
         self.qc_tab.load_data(df)
         self.motif_tab.load_data(df)
         self.orf_tab.load_data(df)
