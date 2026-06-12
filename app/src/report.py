@@ -393,7 +393,7 @@ def generate_pdf(
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import (
-        Image as RLImage, PageBreak, Paragraph,
+        Image as RLImage, KeepTogether, PageBreak, Paragraph,
         SimpleDocTemplate, Spacer, Table, TableStyle,
     )
 
@@ -415,10 +415,13 @@ def generate_pdf(
         fontSize=14, spaceBefore=14, spaceAfter=4,
         textColor=colors.HexColor("#1F6AA5"))
     h2_style = ParagraphStyle("H2", parent=styles["Heading2"],
-        fontSize=12, spaceBefore=10, spaceAfter=3,
+        fontSize=12, spaceBefore=6, spaceAfter=3,
         textColor=colors.HexColor("#374151"))
     body_style = ParagraphStyle("Body", parent=styles["Normal"],
         fontSize=10, spaceAfter=4, leading=14)
+    meta_style = ParagraphStyle("Meta", parent=styles["Normal"],
+        fontSize=9, spaceAfter=3, leading=12,
+        textColor=colors.HexColor("#6B7280"))
     mono_style = ParagraphStyle("Mono", parent=styles["Code"],
         fontSize=8, spaceAfter=2, leading=12,
         textColor=colors.HexColor("#374151"))
@@ -438,14 +441,26 @@ def generate_pdf(
             ("TOPPADDING",    (0,0), (-1,-1), 4),
             ("BOTTOMPADDING", (0,0), (-1,-1), 4),
             ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("ROWBACKGROUNDS", (0,0), (-1,0), [colors.HexColor(header_color)]),
         ])
 
-    def fig_to_image(fig, width_cm=12):
+    def fig_to_image(fig, width_cm=14):
+        """Convert matplotlib figure to reportlab Image with correct scaling."""
+        # Move legend outside plot area to prevent overlap
+        try:
+            for ax in fig.get_axes():
+                leg = ax.get_legend()
+                if leg is not None:
+                    leg.set_bbox_to_anchor((1.01, 1))
+                    leg.set_loc("upper left")
+            fig.tight_layout()
+        except Exception:
+            pass
+
         buf = BytesIO()
-        fig.savefig(buf, format="png", dpi=72, bbox_inches="tight",
+        fig.savefig(buf, format="png", dpi=96, bbox_inches="tight",
                     facecolor=fig.get_facecolor())
         buf.seek(0)
-        # A4 usable width ~17cm, use width_cm to stay within margins
         img = RLImage(buf)
         scale = (width_cm * cm) / img.imageWidth
         img.drawWidth = width_cm * cm
@@ -453,38 +468,59 @@ def generate_pdf(
         img.hAlign = "CENTER"
         return img
 
+    def plot_block(title, fig, width_cm=14):
+        """Wrap plot title + image in KeepTogether so they stay on same page."""
+        return KeepTogether([
+            Paragraph(title, h2_style),
+            fig_to_image(fig, width_cm=width_cm),
+            Spacer(1, 0.5*cm),
+        ])
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Extract dataset variant from filename (A, B or C)
+    import re
+    variant_match = re.search(r"clean_dataset_([ABC])", dataset_path)
+    variant = f"Variant {variant_match.group(1)}" if variant_match else "Unknown"
+    dataset_name = Path(dataset_path).name
+
     story = []
 
-    # Cover
+    # ── Cover ────────────────────────────────────────────────────────────────
     story.append(Paragraph("BioSeq Explorer", title_style))
     story.append(Paragraph("Analysis Report", styles["Heading2"]))
-    story.append(Spacer(1, 0.3*cm))
-    story.append(Paragraph(f"<b>Generated:</b> {now}", body_style))
-    story.append(Paragraph(f"<b>Dataset:</b> {dataset_path}", body_style))
-    story.append(Paragraph(
-        f"<b>HUBA report:</b> {'loaded' if huba_report_loaded else 'not available'}",
-        body_style))
     story.append(Spacer(1, 0.5*cm))
 
-    # 1. Dataset Summary
-    story.append(Paragraph("1. Dataset Summary", h1_style))
-    n_seq = len(qc_df)
-    n_sources = qc_df["_source"].nunique() if "_source" in qc_df.columns else "n/a"
-    n_flagged = int((qc_df["qc_flag"] != "OK").sum()) if "qc_flag" in qc_df.columns else "n/a"
-    t = Table(
-        [["Parameter", "Value"],
-         ["Total sequences", str(n_seq)],
-         ["Gene sources", str(n_sources)],
-         ["Flagged sequences", str(n_flagged)]],
-        colWidths=[8*cm, 8*cm])
-    t.setStyle(make_table_style())
-    story.append(t)
-    story.append(Spacer(1, 0.4*cm))
+    cover_data = [
+        ["Generated", now],
+        ["Dataset", dataset_name],
+        ["Filter variant", variant],
+        ["HUBA report", "Loaded" if huba_report_loaded else "Not available"],
+        ["Total sequences", str(len(qc_df))],
+        ["Gene sources",
+         str(qc_df["_source"].nunique()) if "_source" in qc_df.columns else "n/a"],
+        ["Flagged sequences",
+         str(int((qc_df["qc_flag"] != "OK").sum()))
+         if "qc_flag" in qc_df.columns else "n/a"],
+    ]
+    cover_table = Table(cover_data, colWidths=[5*cm, 11*cm])
+    cover_table.setStyle(TableStyle([
+        ("FONTNAME",   (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTSIZE",   (0,0), (-1,-1), 10),
+        ("TEXTCOLOR",  (0,0), (0,-1), colors.HexColor("#1F6AA5")),
+        ("ROWBACKGROUNDS", (0,0), (-1,-1),
+         [colors.white, colors.HexColor("#F3F4F6")]),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("LEFTPADDING",   (0,0), (-1,-1), 6),
+        ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+    ]))
+    story.append(cover_table)
+    story.append(Spacer(1, 0.5*cm))
 
-    # 2. QC Summary Statistics
-    story.append(Paragraph("2. Quality Control — Summary Statistics", h1_style))
-    qc_data = [["Metric","Mean","Median","Std","Min","Max","Q25","Q75"]]
+    # ── 1. QC Summary Statistics ─────────────────────────────────────────────
+    story.append(Paragraph("1. Quality Control — Summary Statistics", h1_style))
+    qc_data = [["Metric", "Mean", "Median", "Std", "Min", "Max", "Q25", "Q75"]]
     for metric_name, row in summary_df.iterrows():
         fmt = (lambda v: f"{v*100:.2f}%") if "content" in metric_name.lower()             else (lambda v: f"{v:.1f}")
         qc_data.append([metric_name,
@@ -494,10 +530,9 @@ def generate_pdf(
     t = Table(qc_data, colWidths=[4.5*cm]+[1.9*cm]*7)
     t.setStyle(make_table_style())
     story.append(t)
-    story.append(Spacer(1, 0.4*cm))
+    story.append(Spacer(1, 0.5*cm))
 
-    # 3. Per-Gene Statistics
-    story.append(Paragraph("3. Per-Gene Statistics", h1_style))
+    # ── 2. Per-Gene Statistics ────────────────────────────────────────────────
     if not gene_df.empty:
         gene_data = [["Gene / Source", "Mean GC%", "Mean N%", "Mean Length (bp)"]]
         for _, row in gene_df.iterrows():
@@ -509,42 +544,23 @@ def generate_pdf(
             ])
         t = Table(gene_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 4*cm])
         t.setStyle(make_table_style())
-        story.append(t)
-    else:
-        story.append(Paragraph("No gene source data available.", body_style))
-    story.append(Spacer(1, 0.4*cm))
 
-    # 4. Visualizations
+        # KeepTogether keeps header + table on same page if it fits
+        gene_block = [
+            Paragraph("2. Per-Gene Statistics", h1_style),
+            t,
+            Spacer(1, 0.5*cm),
+        ]
+        # If table has many rows it won't fit — just add normally
+        if len(gene_data) <= 12:
+            story.append(KeepTogether(gene_block))
+        else:
+            story.extend(gene_block)
+
+    # ── 3. Statistical Test Results ───────────────────────────────────────────
     story.append(PageBreak())
-    story.append(Paragraph("4. Visualizations", h1_style))
-    plot_specs = [
-        ("GC Content Distribution",      plots_module.plot_gc_distribution),
-        ("GC Content by Gene",           plots_module.plot_gc_boxplot),
-        ("Sequence Length Distribution", plots_module.plot_length_distribution),
-        ("GC% vs. Sequence Length",      plots_module.plot_gc_vs_length),
-        ("N Content Distribution",       plots_module.plot_n_content),
-    ]
-    for plot_title, plot_fn in plot_specs:
-        try:
-            fig = plot_fn(qc_df, figsize=(7.0, 3.5))
-            story.append(Paragraph(plot_title, h2_style))
-            story.append(fig_to_image(fig, width_cm=14))
-            story.append(Spacer(1, 0.4*cm))
-        except Exception:
-            pass
-
-    if corr_fig is not None:
-        try:
-            story.append(Paragraph("Correlation Matrix", h2_style))
-            story.append(fig_to_image(corr_fig, width_cm=10))
-            story.append(Spacer(1, 0.4*cm))
-        except Exception:
-            pass
-
-    # 5. Statistical Test Results
+    story.append(Paragraph("3. Statistical Test Results", h1_style))
     if stat_results:
-        story.append(PageBreak())
-        story.append(Paragraph("5. Statistical Test Results", h1_style))
         for result in stat_results:
             if "error" in result:
                 story.append(Paragraph(f"Error: {result['error']}", body_style))
@@ -555,28 +571,86 @@ def generate_pdf(
             significant = result.get("significant", False)
             note = result.get("note", "")
             sig_label = "Significant" if significant else "Not significant"
-            story.append(Paragraph(f"<b>{test_name}</b> — {metric}", h2_style))
-            story.append(Paragraph(
-                f"p-value: <b>{p_val}</b>   Result: <b>{sig_label}</b>", body_style))
-            story.append(Paragraph(note, body_style))
-            story.append(Spacer(1, 0.3*cm))
+            story.append(KeepTogether([
+                Paragraph(f"<b>{test_name}</b> — {metric}", h2_style),
+                Paragraph(
+                    f"p-value: <b>{p_val}</b>   Result: <b>{sig_label}</b>",
+                    body_style),
+                Paragraph(note, body_style),
+                Spacer(1, 0.3*cm),
+            ]))
+    else:
+        story.append(Paragraph(
+            "No statistical tests were run. To include test results, "
+            "run a test in the Statistics tab before generating the report.",
+            meta_style,
+        ))
+    story.append(Spacer(1, 0.3*cm))
 
-    # 6. HUBA Pipeline Report
+    # ── 4. Visualizations ─────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("4. Visualizations", h1_style))
+
+    plot_specs = [
+        ("GC Content Distribution",      plots_module.plot_gc_distribution),
+        ("GC Content by Gene",           plots_module.plot_gc_boxplot),
+        ("Sequence Length Distribution", plots_module.plot_length_distribution),
+        ("GC% vs. Sequence Length",      plots_module.plot_gc_vs_length),
+        ("N Content Distribution",       plots_module.plot_n_content),
+    ]
+    for plot_title, plot_fn in plot_specs:
+        try:
+            fig = plot_fn(qc_df, figsize=(7.0, 3.8))
+            story.append(plot_block(plot_title, fig, width_cm=14))
+        except Exception:
+            pass
+
+    if corr_fig is not None:
+        try:
+            story.append(plot_block("Correlation Matrix", corr_fig, width_cm=10))
+        except Exception:
+            pass
+
+    # ── 5. HUBA Pipeline Report (condensed) ───────────────────────────────────
     if huba_report_text:
         story.append(PageBreak())
-        story.append(Paragraph("6. HUBA Pipeline Report", h1_style))
+        story.append(Paragraph("5. HUBA Pipeline Report", h1_style))
         story.append(Paragraph(
-            "Data preparation report generated by HUBA:", body_style))
+            "Data preparation summary generated by HUBA pipeline:",
+            body_style))
         story.append(Spacer(1, 0.3*cm))
+
+        # Parse HUBA report — skip duplicate Artefacts sections
+        seen_artefacts = False
+        skip_artefacts = False
         for line in huba_report_text.splitlines():
-            if not line.strip():
-                story.append(Spacer(1, 0.15*cm))
-            elif line.startswith("## "):
-                story.append(Paragraph(line[3:], h2_style))
-            elif line.startswith("# "):
-                story.append(Paragraph(line[2:], h1_style))
+            stripped = line.strip()
+            if not stripped:
+                story.append(Spacer(1, 0.1*cm))
+                continue
+
+            # Detect and deduplicate Artefacts sections
+            if stripped.lower() == "artefacts" or stripped == "## Artefacts":
+                if seen_artefacts:
+                    skip_artefacts = True
+                    continue
+                else:
+                    seen_artefacts = True
+                    skip_artefacts = False
+
+            if skip_artefacts:
+                # Resume after next variant header
+                if stripped.startswith("## Variant") or stripped.startswith("Variant"):
+                    skip_artefacts = False
+                else:
+                    continue
+
+            if stripped.startswith("## "):
+                story.append(Paragraph(stripped[3:], h2_style))
+            elif stripped.startswith("# "):
+                story.append(Paragraph(stripped[2:], h1_style))
             else:
-                safe = line.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                safe = stripped.replace("&","&amp;").replace("<","&lt;")                               .replace(">","&gt;")
                 story.append(Paragraph(safe, mono_style))
 
     doc.build(story)
