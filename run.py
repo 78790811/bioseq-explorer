@@ -146,16 +146,42 @@ class LauncherWindow(ctk.CTk):
         ).pack(pady=(8, 0))
 
     def _run_huba(self) -> None:
-        """Open a new terminal window and run the HUBA pipeline."""
-        self.withdraw()
+        """Open a terminal window with HUBA help message and command prompt."""
+        help_message = (
+            "echo."
+            " & echo ============================================================"
+            " & echo   BioSeq Explorer -- HUBA Pipeline"
+            " & echo ============================================================"
+            " & echo."
+            " & echo Available commands (run from this directory):"
+            " & echo."
+            " & echo   python main.py --dry-run               Preview files, no filtering"
+            " & echo   python main.py --variant A             Lenient  (min_len=10, max_n=50%%)"
+            " & echo   python main.py --variant B             Standard (min_len=20, max_n=20%%)"
+            " & echo   python main.py --variant C             Strict   (min_len=50, max_n=5%%)"
+            " & echo   python main.py --all                   Run all variants A, B, C"
+            " & echo   python main.py --select                Choose files interactively"
+            " & echo   python main.py --select --variant C    Select files + strict filter"
+            " & echo   python main.py --delete                Delete files from source"
+            " & echo."
+            " & echo   python fetch_ncbi.py                   Download sequences from NCBI"
+            " & echo   python generate_test_data.py           Generate test CSV/TSV files"
+            " & echo."
+            " & echo Type a command above and press Enter."
+            " & echo ============================================================"
+            " & echo."
+        )
 
-        # Run HUBA in a new terminal window
-        huba_window = HubaRunnerWindow(self)
-        huba_window.grab_set()
-        self.wait_window(huba_window)
+        try:
+            subprocess.Popen(
+                ["cmd", "/c", "start", "cmd", "/k", help_message],
+                cwd=Path.cwd(),
+                shell=True,
+            )
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("Error", "Could not open terminal:\n" + str(e))
 
-        # Refresh launcher after HUBA finishes
-        self.deiconify()
         self._refresh()
 
     def _open_explorer(self) -> None:
@@ -351,6 +377,23 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color="gray",
         ).pack()
 
+        # --- Collapsible "Available commands" panel ---
+        self._commands_visible = False
+        self._commands_frame = None
+
+        self._toggle_btn = ctk.CTkButton(
+            btn_frame,
+            text="ℹ️  Available terminal commands  ▸",
+            height=28,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray30", "gray70"),
+            hover_color=("gray85", "gray25"),
+            command=self._toggle_commands,
+        )
+        self._toggle_btn.pack(fill="x", pady=(4, 4))
+
         # Close button
         ctk.CTkButton(
             btn_frame,
@@ -362,27 +405,7 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color=("gray30", "gray70"),
             hover_color=("gray85", "gray25"),
             command=self.destroy,
-        ).pack(fill="x", pady=(4, 12))
-
-        # --- Collapsible "Available commands" panel ---
-        self._commands_visible = False
-        self._commands_frame = None
-
-        toggle_row = ctk.CTkFrame(self, fg_color="transparent")
-        toggle_row.pack(fill="x", padx=20, pady=(0, 4))
-
-        self._toggle_btn = ctk.CTkButton(
-            toggle_row,
-            text="ℹ️  Available terminal commands  ▸",
-            height=28,
-            font=ctk.CTkFont(size=11),
-            fg_color="transparent",
-            border_width=1,
-            text_color=("gray30", "gray70"),
-            hover_color=("gray85", "gray25"),
-            command=self._toggle_commands,
-        )
-        self._toggle_btn.pack(fill="x")
+        ).pack(fill="x", pady=(0, 8))
 
     def _toggle_commands(self) -> None:
         """Show or hide the available terminal commands panel.
