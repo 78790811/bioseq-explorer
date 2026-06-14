@@ -351,10 +351,14 @@ class HomeTab(ctk.CTkFrame):
             )
             self.tree.column(col, width=col_width, minwidth=60)
 
-        # Insert rows (limit to 500 for performance)
-        display_df = self.df.head(500)
-        for _, row in display_df.iterrows():
-            self.tree.insert("", "end", values=list(row))
+            # Insert rows (limit to 500 for performance)
+            display_df = self.df.head(500)
+            for i, (_, row) in enumerate(display_df.iterrows()):
+                tag = "evenrow" if i % 2 == 0 else "oddrow"
+                self.tree.insert("", "end", values=list(row), tags=(tag,))
+
+            self.tree.tag_configure("evenrow", background="#F0F4FA")
+            self.tree.tag_configure("oddrow", background="#FFFFFF")
 
         if len(self.df) > 500:
             self.tree.insert(
@@ -639,9 +643,14 @@ class QualityControlTab(ctk.CTkFrame):
         self.qc_tree.pack(fill="both", expand=True)
 
         # Populate rows
-        for _, row in self.qc_df.iterrows():
+        for i, (_, row) in enumerate(self.qc_df.iterrows()):
             flag = row.get("qc_flag", "OK")
-            tag = "flagged" if flag != "OK" else "ok"
+            if flag != "OK":
+                tag = "flagged"
+            elif i % 2 == 0:
+                tag = "evenrow"
+            else:
+                tag = "oddrow"
             self.qc_tree.insert(
                 "", "end",
                 values=[
@@ -654,9 +663,10 @@ class QualityControlTab(ctk.CTkFrame):
                 tags=(tag,),
             )
 
-        # Tag colors: flagged rows in light orange
+        # Tag colors: flagged rows in light orange, alternating rows gray/white
         self.qc_tree.tag_configure("flagged", background="#FFF3E0")
-        self.qc_tree.tag_configure("ok", background="")
+        self.qc_tree.tag_configure("evenrow", background="#F0F4FA")
+        self.qc_tree.tag_configure("oddrow", background="#FFFFFF")
 
         # --- Right: plots panel ---
         plots_frame = ctk.CTkFrame(content)
