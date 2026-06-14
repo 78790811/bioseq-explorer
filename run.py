@@ -362,7 +362,147 @@ class HubaRunnerWindow(ctk.CTkToplevel):
             text_color=("gray30", "gray70"),
             hover_color=("gray85", "gray25"),
             command=self.destroy,
-        ).pack(fill="x", pady=(4, 0))
+        ).pack(fill="x", pady=(4, 12))
+
+        # --- Collapsible "Available commands" panel ---
+        self._commands_visible = False
+        self._commands_frame = None
+
+        toggle_row = ctk.CTkFrame(self, fg_color="transparent")
+        toggle_row.pack(fill="x", padx=20, pady=(0, 4))
+
+        self._toggle_btn = ctk.CTkButton(
+            toggle_row,
+            text="ℹ️  Available terminal commands  ▸",
+            height=28,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            border_width=1,
+            text_color=("gray30", "gray70"),
+            hover_color=("gray85", "gray25"),
+            command=self._toggle_commands,
+        )
+        self._toggle_btn.pack(fill="x")
+
+    def _toggle_commands(self) -> None:
+        """Show or hide the available terminal commands panel.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self._commands_visible = not self._commands_visible
+
+        if self._commands_visible:
+            self._toggle_btn.configure(
+                text="ℹ️  Available terminal commands  ▾"
+            )
+            self._commands_frame = ctk.CTkFrame(self, fg_color="#F0F4F8")
+            self._commands_frame.pack(fill="x", padx=20, pady=(0, 8))
+
+            commands = [
+                ("--dry-run",
+                 "Preview files only — no filtering or saving"),
+                ("--variant A / B / C",
+                 "Run a single filter variant"),
+                ("--all",
+                 "Run all variants (A, B, C) and compare"),
+                ("--select",
+                 "Choose which files to process interactively"),
+                ("--select --variant C",
+                 "Select files + apply strict filtering"),
+                ("--delete",
+                 "Interactively delete files from source/"),
+            ]
+
+            ctk.CTkLabel(
+                self._commands_frame,
+                text="Run from project root:  python main.py <command>",
+                font=ctk.CTkFont(size=10, slant="italic"),
+                text_color="gray",
+                anchor="w",
+            ).pack(anchor="w", padx=10, pady=(6, 2))
+
+            for cmd, desc in commands:
+                row = ctk.CTkFrame(
+                    self._commands_frame, fg_color="transparent"
+                )
+                row.pack(fill="x", padx=10, pady=1)
+
+                ctk.CTkLabel(
+                    row,
+                    text=cmd,
+                    font=ctk.CTkFont(family="Courier New", size=11,
+                                     weight="bold"),
+                    text_color=("#1F6AA5", "#4DA6FF"),
+                    width=200,
+                    anchor="w",
+                ).pack(side="left")
+
+                ctk.CTkLabel(
+                    row,
+                    text=desc,
+                    font=ctk.CTkFont(size=11),
+                    text_color="gray",
+                    anchor="w",
+                ).pack(side="left", padx=(8, 0))
+
+            # Extra tools
+            ctk.CTkLabel(
+                self._commands_frame,
+                text="Other useful scripts:",
+                font=ctk.CTkFont(size=10, slant="italic"),
+                text_color="gray",
+                anchor="w",
+            ).pack(anchor="w", padx=10, pady=(6, 2))
+
+            extra = [
+                ("python fetch_ncbi.py",
+                 "Download sequences from NCBI"),
+                ("python generate_test_data.py",
+                 "Generate CSV/TSV test files"),
+            ]
+            for cmd, desc in extra:
+                row = ctk.CTkFrame(
+                    self._commands_frame, fg_color="transparent"
+                )
+                row.pack(fill="x", padx=10, pady=1)
+                ctk.CTkLabel(
+                    row,
+                    text=cmd,
+                    font=ctk.CTkFont(family="Courier New", size=11,
+                                     weight="bold"),
+                    text_color=("#1F6AA5", "#4DA6FF"),
+                    width=200,
+                    anchor="w",
+                ).pack(side="left")
+                ctk.CTkLabel(
+                    row,
+                    text=desc,
+                    font=ctk.CTkFont(size=11),
+                    text_color="gray",
+                    anchor="w",
+                ).pack(side="left", padx=(8, 0))
+
+            ctk.CTkLabel(
+                self._commands_frame,
+                text="",
+                height=4,
+            ).pack()
+
+            # Resize window to fit content
+            self.geometry("460x820")
+
+        else:
+            self._toggle_btn.configure(
+                text="ℹ️  Available terminal commands  ▸"
+            )
+            if self._commands_frame:
+                self._commands_frame.destroy()
+                self._commands_frame = None
+            self.geometry("460x670")
 
     def _on_file_selection_changed(self) -> None:
         """Ensure at least one file selection option is always checked."""
