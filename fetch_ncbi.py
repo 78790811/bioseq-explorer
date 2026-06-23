@@ -53,7 +53,13 @@ def fetch_gene_sequences(
         Number of sequences downloaded, or 0 if skipped or failed.
     """
     output_path = output_dir / f"{gene_symbol.lower()}_sequences.fasta"
-    query = f"{gene_symbol.upper()} Homo sapiens mRNA"
+    # Use [Gene] field restriction — without it, NCBI's free-text search
+    # can match unrelated genes that are merely mentioned in the same
+    # record's description (e.g. CHEK2 appearing in BRCA2 annotations).
+    query = (
+        f"{gene_symbol.upper()}[Gene] AND Homo sapiens[Organism] "
+        f"AND mRNA[Filter]"
+    )
 
     # --- Check if file already exists ---
     if output_path.exists() and not force:

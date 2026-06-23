@@ -351,14 +351,14 @@ class HomeTab(ctk.CTkFrame):
             )
             self.tree.column(col, width=col_width, minwidth=60)
 
-            # Insert rows (limit to 500 for performance)
-            display_df = self.df.head(500)
-            for i, (_, row) in enumerate(display_df.iterrows()):
-                tag = "evenrow" if i % 2 == 0 else "oddrow"
-                self.tree.insert("", "end", values=list(row), tags=(tag,))
+        # Insert rows (limit to 500 for performance)
+        display_df = self.df.head(500)
+        for i, (_, row) in enumerate(display_df.iterrows()):
+            tag = "evenrow" if i % 2 == 0 else "oddrow"
+            self.tree.insert("", "end", values=list(row), tags=(tag,))
 
-            self.tree.tag_configure("evenrow", background="#F0F4FA")
-            self.tree.tag_configure("oddrow", background="#FFFFFF")
+        self.tree.tag_configure("evenrow", background="#F0F4FA")
+        self.tree.tag_configure("oddrow", background="#FFFFFF")
 
         if len(self.df) > 500:
             self.tree.insert(
