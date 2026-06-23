@@ -72,6 +72,12 @@ class LauncherWindow(ctk.CTk):
 
         self._build_ui()
 
+        # Track dataset state to know if a refresh is needed
+        self._dataset_known = get_latest_dataset() is not None
+
+        # Start polling for a newly generated dataset
+        self._start_polling()
+
     def _build_ui(self) -> None:
         """Build the launcher UI."""
 
@@ -144,6 +150,42 @@ class LauncherWindow(ctk.CTk):
             hover_color=("gray85", "gray25"),
             command=self.destroy,
         ).pack(pady=(8, 0))
+
+    def _start_polling(self) -> None:
+        """Periodically check if a clean dataset has appeared and refresh
+        the launcher UI automatically when it does — no restart needed.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self.after(3000, self._check_for_dataset)
+
+    def _check_for_dataset(self) -> None:
+        """Check if a clean dataset now exists and refresh if it does.
+
+        Compares current dataset availability against the last known
+        state. If a dataset has newly appeared, refreshes the UI to
+        activate the 'Open BioSeq Explorer' button. Keeps polling
+        every 3 seconds regardless, in case a newer file appears later.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        dataset_info = get_latest_dataset()
+        dataset_now_known = dataset_info is not None
+
+        if dataset_now_known != self._dataset_known:
+            self._dataset_known = dataset_now_known
+            self._refresh()
+
+        # Keep polling — re-running HUBA later should still be detected
+        self.after(3000, self._check_for_dataset)
 
     def _run_huba(self) -> None:
         """Open a terminal window with HUBA help message and command prompt."""
