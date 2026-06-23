@@ -682,6 +682,99 @@ class QualityControlTab(ctk.CTkFrame):
             text_color="gray",
         ).pack()
 
+    def _setup_tooltip(self) -> None:
+        """Attach a hover tooltip to the QC Treeview for truncated cells.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self._tooltip_window = None
+        self.qc_tree.bind("<Motion>", self._on_tree_motion)
+        self.qc_tree.bind("<Leave>", self._hide_tooltip)
+
+    def _on_tree_motion(self, event) -> None:
+        """Show a tooltip with full cell text when hovering over a QC row.
+
+        Args:
+            event: Tkinter motion event.
+
+        Returns:
+            None
+        """
+        row_id = self.qc_tree.identify_row(event.y)
+        col_id = self.qc_tree.identify_column(event.x)
+
+        if not row_id or not col_id:
+            self._hide_tooltip()
+            return
+
+        try:
+            col_index = int(col_id.replace("#", "")) - 1
+            columns = self.qc_tree["columns"]
+            if col_index < 0 or col_index >= len(columns):
+                self._hide_tooltip()
+                return
+            col_name = columns[col_index]
+            value = self.qc_tree.set(row_id, col_name)
+        except (ValueError, IndexError):
+            self._hide_tooltip()
+            return
+
+        if not value or len(str(value)) < 25:
+            self._hide_tooltip()
+            return
+
+        self._show_tooltip(event.x_root, event.y_root, str(value))
+
+    def _show_tooltip(self, x: int, y: int, text: str) -> None:
+        """Display a tooltip popup near the cursor with the given text.
+
+        Args:
+            x:    Screen x-coordinate (root) for tooltip placement.
+            y:    Screen y-coordinate (root) for tooltip placement.
+            text: Full text to display in the tooltip.
+
+        Returns:
+            None
+        """
+        if self._tooltip_window is not None:
+            self._tooltip_window.destroy()
+
+        self._tooltip_window = tk.Toplevel(self.qc_tree)
+        self._tooltip_window.wm_overrideredirect(True)
+        self._tooltip_window.wm_geometry(f"+{x + 12}+{y + 12}")
+
+        display_text = text if len(text) <= 300 else text[:300] + "..."
+
+        label = tk.Label(
+            self._tooltip_window,
+            text=display_text,
+            justify="left",
+            background="#FFFDE7",
+            relief="solid",
+            borderwidth=1,
+            font=("Segoe UI", 10),
+            wraplength=500,
+            padx=8, pady=6,
+        )
+        label.pack()
+
+    def _hide_tooltip(self, event=None) -> None:
+        """Destroy the currently shown tooltip, if any.
+
+        Args:
+            event: Optional Tkinter event (unused, for binding compatibility).
+
+        Returns:
+            None
+        """
+        if self._tooltip_window is not None:
+            self._tooltip_window.destroy()
+            self._tooltip_window = None
+
     def _show_error(self, message: str) -> None:
         """Replace placeholder with a critical error message.
 
@@ -865,6 +958,12 @@ class QualityControlTab(ctk.CTkFrame):
         vsb.pack(side="right", fill="y")
         self.qc_tree.pack(fill="both", expand=True)
 
+        # Enable hover tooltips for truncated cell content
+        self._setup_tooltip()
+
+        # Double-click opens a detail popup for the selected row
+        self.qc_tree.bind("<Double-1>", self._on_qc_row_double_click)
+
         # Populate rows
         for i, (_, row) in enumerate(self.qc_df.iterrows()):
             flag = row.get("qc_flag", "OK")
@@ -979,6 +1078,105 @@ class QualityControlTab(ctk.CTkFrame):
         self.qc_tree.heading(
             col, command=lambda: self._sort_qc(col, not reverse)
         )
+
+    def _on_qc_row_double_click(self, event) -> None:
+        """Open a detail popup for the double-clicked QC row.
+
+        Args:
+            event: Tkinter event object.
+
+        Returns:
+            None
+        """
+        row_id = self.qc_tree.identify_row(event.y)
+        if not row_id:
+            return
+
+        columns = self.qc_tree["columns"]
+        values = self.qc_tree.item(row_id, "values")
+
+        if not values or len(values) != len(columns):
+            return
+
+        row_data = dict(zip(columns, values))
+        self._show_qc_detail_popup(row_data)
+
+    def _show_qc_detail_popup(self, row_data: dict) -> None:
+        """Show a popup window with full QC metrics for one sequence.
+
+        Includes a 'Copy ID' button to copy the sequence ID to clipboard.
+
+        Args:
+            row_data: Dict mapping QC column name to cell value for the row.
+
+        Returns:
+            None
+        """
+        popup = tk.Toplevel(self)
+        popup.title(f"Sequence metrics — {row_data.get('id', '')}")
+        popup.geometry("440x320")
+        popup.resizable(False, False)
+
+        # Center relative to main app window
+        app = self.winfo_toplevel()
+        app.update_idletasks()
+        px, py = app.winfo_x(), app.winfo_y()
+        pw, ph = app.winfo_width(), app.winfo_height()
+        dw, dh = 440, 320
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        popup.geometry(f"{dw}x{dh}+{x}+{y}")
+
+        container = tk.Frame(popup, padx=16, pady=12)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(
+            container,
+            text="Sequence metrics",
+            font=("Segoe UI", 13, "bold"),
+            fg="#1F6AA5",
+        ).pack(anchor="w", pady=(0, 8))
+
+        labels = {
+            "id": "ID", "length": "Length (bp)",
+            "gc_content": "GC%", "n_content": "N%", "qc_flag": "Flag",
+        }
+
+        for key, value in row_data.items():
+            row = tk.Frame(container)
+            row.pack(fill="x", pady=3)
+            tk.Label(
+                row, text=f"{labels.get(key, key)}:",
+                font=("Segoe UI", 10, "bold"),
+                width=14, anchor="w",
+            ).pack(side="left")
+            tk.Label(
+                row, text=str(value), font=("Segoe UI", 10),
+                anchor="w",
+            ).pack(side="left")
+
+        btn_frame = tk.Frame(container)
+        btn_frame.pack(fill="x", pady=(16, 0))
+
+        def copy_id():
+            popup.clipboard_clear()
+            popup.clipboard_append(str(row_data.get("id", "")))
+            copy_btn.configure(text="✓ Copied!")
+            popup.after(1500, lambda: copy_btn.configure(text="Copy ID"))
+
+        copy_btn = tk.Button(
+            btn_frame, text="Copy ID", width=14,
+            font=("Segoe UI", 10, "bold"),
+            bg="#1F6AA5", fg="white",
+            command=copy_id,
+        )
+        copy_btn.pack(side="left")
+
+        tk.Button(
+            btn_frame, text="Close", width=12,
+            font=("Segoe UI", 10),
+            command=popup.destroy,
+        ).pack(side="right")
 
 
 # ---------------------------------------------------------------------------
