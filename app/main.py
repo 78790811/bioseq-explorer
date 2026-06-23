@@ -161,6 +161,12 @@ class HomeTab(ctk.CTkFrame):
         hsb.pack(side="bottom", fill="x")
         self.tree.pack(fill="both", expand=True)
 
+        # Enable hover tooltips for truncated cell content
+        self._setup_tooltip()
+
+        # Double-click opens a detail popup for the selected row
+        self.tree.bind("<Double-1>", self._on_row_double_click)
+
         # Placeholder message in table
         self._show_table_placeholder()
 
@@ -184,6 +190,104 @@ class HomeTab(ctk.CTkFrame):
         self.report_box.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
         self._show_report_placeholder()
+
+    def _setup_tooltip(self) -> None:
+        """Attach a hover tooltip to the Treeview showing full cell content.
+
+        Useful for the 'sequence' and 'description' columns, which are
+        visually truncated by column width but contain much longer text.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        self._tooltip_window = None
+        self.tree.bind("<Motion>", self._on_tree_motion)
+        self.tree.bind("<Leave>", self._hide_tooltip)
+
+    def _on_tree_motion(self, event) -> None:
+        """Show a tooltip with full cell text when hovering over a row.
+
+        Args:
+            event: Tkinter motion event.
+
+        Returns:
+            None
+        """
+        row_id = self.tree.identify_row(event.y)
+        col_id = self.tree.identify_column(event.x)
+
+        if not row_id or not col_id:
+            self._hide_tooltip()
+            return
+
+        try:
+            col_index = int(col_id.replace("#", "")) - 1
+            columns = self.tree["columns"]
+            if col_index < 0 or col_index >= len(columns):
+                self._hide_tooltip()
+                return
+            col_name = columns[col_index]
+            value = self.tree.set(row_id, col_name)
+        except (ValueError, IndexError):
+            self._hide_tooltip()
+            return
+
+        # Only show tooltip if the value looks truncated/long
+        if not value or len(str(value)) < 25:
+            self._hide_tooltip()
+            return
+
+        self._show_tooltip(event.x_root, event.y_root, str(value))
+
+    def _show_tooltip(self, x: int, y: int, text: str) -> None:
+        """Display a tooltip popup near the cursor with the given text.
+
+        Args:
+            x:    Screen x-coordinate (root) for tooltip placement.
+            y:    Screen y-coordinate (root) for tooltip placement.
+            text: Full text to display in the tooltip.
+
+        Returns:
+            None
+        """
+        if self._tooltip_window is not None:
+            self._tooltip_window.destroy()
+
+        self._tooltip_window = tk.Toplevel(self.tree)
+        self._tooltip_window.wm_overrideredirect(True)
+        self._tooltip_window.wm_geometry(f"+{x + 12}+{y + 12}")
+
+        # Wrap long text for readability
+        display_text = text if len(text) <= 300 else text[:300] + "..."
+
+        label = tk.Label(
+            self._tooltip_window,
+            text=display_text,
+            justify="left",
+            background="#FFFDE7",
+            relief="solid",
+            borderwidth=1,
+            font=("Segoe UI", 10),
+            wraplength=500,
+            padx=8, pady=6,
+        )
+        label.pack()
+
+    def _hide_tooltip(self, event=None) -> None:
+        """Destroy the currently shown tooltip, if any.
+
+        Args:
+            event: Optional Tkinter event (unused, for binding compatibility).
+
+        Returns:
+            None
+        """
+        if self._tooltip_window is not None:
+            self._tooltip_window.destroy()
+            self._tooltip_window = None
 
     def _show_table_placeholder(self) -> None:
         """Show placeholder text when no dataset is loaded.
@@ -394,6 +498,125 @@ class HomeTab(ctk.CTkFrame):
             col,
             command=lambda: self._sort_column(col, not reverse),
         )
+
+    def _on_row_double_click(self, event) -> None:
+        """Open a detail popup for the double-clicked row.
+
+        Args:
+            event: Tkinter event object.
+
+        Returns:
+            None
+        """
+        row_id = self.tree.identify_row(event.y)
+        if not row_id:
+            return
+
+        columns = self.tree["columns"]
+        values = self.tree.item(row_id, "values")
+
+        if not values or len(values) != len(columns):
+            return  # Placeholder row or malformed data
+
+        row_data = dict(zip(columns, values))
+        self._show_row_detail_popup(row_data)
+
+    def _show_row_detail_popup(self, row_data: dict) -> None:
+        """Show a popup window with full details for one sequence row.
+
+        Includes a 'Copy sequence' button to copy the full sequence
+        to the clipboard.
+
+        Args:
+            row_data: Dict mapping column name to cell value for the row.
+
+        Returns:
+            None
+        """
+        popup = tk.Toplevel(self)
+        popup.title(f"Sequence details — {row_data.get('id', '')}")
+        popup.geometry("640x420")
+        popup.resizable(False, False)
+
+        # Center relative to main app window
+        app = self.winfo_toplevel()
+        app.update_idletasks()
+        px, py = app.winfo_x(), app.winfo_y()
+        pw, ph = app.winfo_width(), app.winfo_height()
+        dw, dh = 640, 420
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        popup.geometry(f"{dw}x{dh}+{x}+{y}")
+
+        container = tk.Frame(popup, padx=16, pady=12)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(
+            container,
+            text="Sequence details",
+            font=("Segoe UI", 13, "bold"),
+            fg="#1F6AA5",
+        ).pack(anchor="w", pady=(0, 8))
+
+        # Show all non-sequence fields as simple key/value rows
+        for key, value in row_data.items():
+            if key == "sequence":
+                continue
+            row = tk.Frame(container)
+            row.pack(fill="x", pady=2)
+            tk.Label(
+                row, text=f"{key}:", font=("Segoe UI", 10, "bold"),
+                width=12, anchor="w",
+            ).pack(side="left")
+            tk.Label(
+                row, text=str(value), font=("Segoe UI", 10),
+                anchor="w", wraplength=460, justify="left",
+            ).pack(side="left", fill="x", expand=True)
+
+        # Full sequence in a scrollable text box
+        tk.Label(
+            container, text="sequence:", font=("Segoe UI", 10, "bold"),
+            anchor="w",
+        ).pack(anchor="w", pady=(10, 2))
+
+        seq_text = row_data.get("sequence", "")
+        text_frame = tk.Frame(container)
+        text_frame.pack(fill="both", expand=True)
+
+        seq_box = tk.Text(
+            text_frame, wrap="word", font=("Courier New", 10),
+            height=8, relief="solid", borderwidth=1,
+        )
+        seq_vsb = tk.Scrollbar(text_frame, command=seq_box.yview)
+        seq_box.configure(yscrollcommand=seq_vsb.set)
+        seq_box.insert("1.0", seq_text)
+        seq_box.configure(state="disabled")
+        seq_vsb.pack(side="right", fill="y")
+        seq_box.pack(side="left", fill="both", expand=True)
+
+        # Buttons row
+        btn_frame = tk.Frame(container)
+        btn_frame.pack(fill="x", pady=(12, 0))
+
+        def copy_sequence():
+            popup.clipboard_clear()
+            popup.clipboard_append(seq_text)
+            copy_btn.configure(text="✓ Copied!")
+            popup.after(1500, lambda: copy_btn.configure(text="Copy sequence"))
+
+        copy_btn = tk.Button(
+            btn_frame, text="Copy sequence", width=16,
+            font=("Segoe UI", 10, "bold"),
+            bg="#1F6AA5", fg="white",
+            command=copy_sequence,
+        )
+        copy_btn.pack(side="left")
+
+        tk.Button(
+            btn_frame, text="Close", width=12,
+            font=("Segoe UI", 10),
+            command=popup.destroy,
+        ).pack(side="right")
 
     def _load_report(self, report_path: Path) -> None:
         """Load and display REPORT.md content in the report panel.
