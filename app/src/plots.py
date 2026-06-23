@@ -194,6 +194,22 @@ def plot_gc_boxplot(
     for patch, color in zip(bp["boxes"], GENE_COLORS):
         patch.set_facecolor(color)
         patch.set_alpha(0.8)
+        # Always draw a visible solid edge — boxes with near-zero variance
+        # (e.g. synthetic test sequences with uniform GC%) collapse to a
+        # hairline and disappear against the background without this.
+        patch.set_edgecolor(color)
+        patch.set_linewidth(1.5)
+
+    # For extremely low-variance groups the box itself can still be only
+    # a few pixels tall even with a visible edge. Draw a small marker at
+    # the median position for every group so a flat box is never invisible.
+    for i, d in enumerate(data, start=1):
+        if len(d) > 0:
+            ax.plot(
+                i, np.median(d),
+                marker="_", markersize=18, color="black",
+                markeredgewidth=1.5, zorder=5,
+            )
 
     # Shorten source labels (remove path and extension)
     labels = [s.replace("_sequences.fasta", "").replace(".fasta", "")
