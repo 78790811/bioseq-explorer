@@ -2494,10 +2494,76 @@ class ReportTab(ctk.CTkFrame):
         self.status_label.configure(
             text=f"✓ PDF saved to: {pdf_path}", text_color="green"
         )
-        messagebox.showinfo(
-            "PDF generated",
-            f"PDF report saved successfully:\n{pdf_path}",
-        )
+        self._show_pdf_success_popup(pdf_path)
+
+    def _show_pdf_success_popup(self, pdf_path: Path) -> None:
+        """Show a success popup with an option to open the generated PDF.
+
+        Args:
+            pdf_path: Path to the generated PDF file.
+
+        Returns:
+            None
+        """
+        import os
+
+        popup = tk.Toplevel(self)
+        popup.title("PDF generated")
+        popup.resizable(False, False)
+
+        # Center relative to parent window
+        self.winfo_toplevel().update_idletasks()
+        px = self.winfo_toplevel().winfo_x()
+        py = self.winfo_toplevel().winfo_y()
+        pw = self.winfo_toplevel().winfo_width()
+        ph = self.winfo_toplevel().winfo_height()
+        dw, dh = 420, 180
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        popup.geometry(f"{dw}x{dh}+{x}+{y}")
+
+        tk.Label(
+            popup,
+            text="✓  PDF report generated successfully",
+            font=("Segoe UI", 12, "bold"),
+            fg="#2CA02C",
+        ).pack(pady=(20, 8))
+
+        tk.Label(
+            popup,
+            text=str(pdf_path),
+            font=("Segoe UI", 9),
+            fg="#6B7280",
+            wraplength=380,
+            justify="center",
+        ).pack(pady=(0, 16))
+
+        btn_frame = tk.Frame(popup)
+        btn_frame.pack(pady=(0, 16))
+
+        def on_open():
+            try:
+                os.startfile(str(pdf_path))
+            except Exception as e:
+                messagebox.showerror(
+                    "Could not open PDF",
+                    f"Failed to open the file:\n{e}",
+                )
+
+        tk.Button(
+            btn_frame, text="Open PDF", width=14,
+            font=("Segoe UI", 11, "bold"),
+            bg="#1F6AA5", fg="white",
+            command=on_open,
+        ).pack(side="left", padx=(0, 8))
+
+        tk.Button(
+            btn_frame, text="Close", width=12,
+            font=("Segoe UI", 11),
+            command=popup.destroy,
+        ).pack(side="left")
+
+        popup.grab_set()
 
     def _show_pdf_section_dialog(
         self,
