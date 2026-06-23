@@ -402,7 +402,11 @@ def generate_pdf(
     )
 
     _ensure_output_dirs(output_dir)
-    pdf_path = output_dir / "bioseq_report.pdf"
+    # Timestamped filename — avoids "Permission denied" errors on Windows
+    # when a previously generated PDF with the same name is still open
+    # in a viewer (Adobe, browser, etc.), which locks the file for writing.
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    pdf_path = output_dir / f"bioseq_report_{timestamp}.pdf"
 
     doc = SimpleDocTemplate(
         str(pdf_path), pagesize=A4,
