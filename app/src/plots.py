@@ -206,17 +206,19 @@ def plot_gc_boxplot(
     ax.axhline(30, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
     ax.axhline(70, color="#E05A2B", linestyle="--", linewidth=0.8, alpha=0.6)
 
-    # Y axis: compute bounds from actual whisker extents with generous padding
+    # Y axis: compute bounds directly from actual data min/max across all
+    # genes, with a flat padding margin. Using global IQR here was the bug —
+    # genes with very different GC% (e.g. brca2 ~24% vs tp53 ~55%) skewed
+    # the statistical whisker estimate so far that the lowest box (brca2)
+    # was cut off below the computed bottom of the y-axis.
     all_gc = qc_df["gc_content"] * 100
-    q1 = all_gc.quantile(0.25)
-    q3 = all_gc.quantile(0.75)
-    iqr = q3 - q1
-    whisker_low = max(0, all_gc.min() - 1.5 * iqr)
-    whisker_high = min(100, all_gc.max() + 1.5 * iqr)
-    span = whisker_high - whisker_low
+    data_min = all_gc.min()
+    data_max = all_gc.max()
+    span = max(data_max - data_min, 1.0)  # avoid zero-span edge case
+    margin = span * 0.15
     ax.set_ylim(
-        bottom=max(0, whisker_low - span * 0.25),
-        top=min(100, whisker_high + span * 0.10),
+        bottom=max(0, data_min - margin),
+        top=min(100, data_max + margin),
     )
 
     fig.tight_layout()
