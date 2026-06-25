@@ -38,6 +38,13 @@ _spec = _ilu.spec_from_file_location("app_config", _cfg_path)
 config = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(config)
 
+# Load logger module from app/src/logger.py
+_log_path = APP_DIR / "src" / "logger.py"
+_spec_log = _ilu.spec_from_file_location("app_logger", _log_path)
+logger = _ilu.module_from_spec(_spec_log)
+_spec_log.loader.exec_module(logger)
+logger.init_logger(PROJECT_ROOT)
+
 # ---------------------------------------------------------------------------
 # Appearance settings
 # ---------------------------------------------------------------------------
@@ -3382,6 +3389,25 @@ class BioSeqExplorerApp(ctk.CTk):
         Returns:
             None
         """
+        # --- Status bar (built first and packed with side="bottom" so it
+        # always reserves its space at the bottom of the window, regardless
+        # of how much content individual tabs try to expand into) ---
+        status_bar = ctk.CTkFrame(self, height=28, corner_radius=0,
+                                  fg_color=("gray90", "gray17"))
+        status_bar.pack(fill="x", side="bottom")
+        status_bar.pack_propagate(False)
+
+        self.status_bar_label = ctk.CTkLabel(
+            status_bar,
+            text="✓  Ready",
+            font=ctk.CTkFont(size=11),
+            text_color="#2CA02C",
+            anchor="w",
+        )
+        self.status_bar_label.pack(side="left", padx=12, pady=2)
+
+        logger.register_status_bar(self.status_bar_label)
+
         # --- Header bar ---
         header = ctk.CTkFrame(self, height=48, corner_radius=0)
         header.pack(fill="x", side="top")
@@ -3439,6 +3465,8 @@ class BioSeqExplorerApp(ctk.CTk):
 
         self.report_tab = ReportTab(self.tabs.tab("📄  Report"))
         self.report_tab.pack(fill="both", expand=True)
+
+        logger.log_action("Application started")
 
         # Set default tab
         self.tabs.set("🏠  Home")
