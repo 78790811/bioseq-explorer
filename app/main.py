@@ -1450,6 +1450,29 @@ class MotifAnalysisTab(ctk.CTkFrame):
             anchor="w",
         ).pack(anchor="w", padx=12, pady=(4, 4))
 
+        # Legend explaining row colors in the detail table
+        legend_row = ctk.CTkFrame(right, fg_color="transparent")
+        legend_row.pack(anchor="w", padx=12, pady=(0, 4))
+
+        # Green swatch uses a more saturated shade than the table row
+        # background so the legend remains clearly visible — the actual
+        # table rows stay subtle (#E8F5E9) so they don't overpower the text.
+        green_swatch = tk.Frame(legend_row, bg="#C8E6C9", width=16, height=16,
+                                highlightbackground="#66BB6A", highlightthickness=1)
+        green_swatch.pack(side="left", padx=(0, 4))
+        ctk.CTkLabel(
+            legend_row, text="Motif found",
+            font=ctk.CTkFont(size=10), text_color="gray",
+        ).pack(side="left", padx=(0, 16))
+
+        white_swatch = tk.Frame(legend_row, bg="#FFFFFF", width=16, height=16,
+                                highlightbackground="#9CA3AF", highlightthickness=1)
+        white_swatch.pack(side="left", padx=(0, 4))
+        ctk.CTkLabel(
+            legend_row, text="Not found",
+            font=ctk.CTkFont(size=10), text_color="gray",
+        ).pack(side="left")
+
         detail_container = tk.Frame(right)
         detail_container.pack(fill="x", padx=12, pady=(0, 12))
 
