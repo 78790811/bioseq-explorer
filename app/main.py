@@ -3389,7 +3389,7 @@ class ReportTab(ctk.CTkFrame):
 class BioSeqExplorerApp(ctk.CTk):
     """Main BioSeq Explorer application window."""
 
-    def __init__(self) -> None:
+    def __init__(self, launch_position: tuple[int, int] | None = None) -> None:
         super().__init__()
 
         # --- Window setup ---
@@ -3399,10 +3399,18 @@ class BioSeqExplorerApp(ctk.CTk):
         )
         self.minsize(config.MIN_WINDOW_WIDTH, config.MIN_WINDOW_HEIGHT)
 
-        # Center on screen
         self.update_idletasks()
-        x = (self.winfo_screenwidth() - config.WINDOW_WIDTH) // 2
-        y = (self.winfo_screenheight() - config.WINDOW_HEIGHT) // 2
+        if launch_position is not None:
+            # Open at the same position as the launcher window, so the
+            # app appears on the same monitor instead of always centering
+            # on the primary display.
+            x, y = launch_position
+        else:
+            # No launcher position provided (e.g. running app/main.py
+            # directly) — fall back to centering on the primary screen.
+            x = (self.winfo_screenwidth() - config.WINDOW_WIDTH) // 2
+            y = (self.winfo_screenheight() - config.WINDOW_HEIGHT) // 2
+
         self.geometry(
             f"{config.WINDOW_WIDTH}x{config.WINDOW_HEIGHT}+{x}+{y}"
         )
@@ -3541,5 +3549,20 @@ class BioSeqExplorerApp(ctk.CTk):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    app = BioSeqExplorerApp()
+    # Optional --at X Y arguments let the launcher position this window
+    # at its own screen location, so BioSeq Explorer opens on the same
+    # monitor as the launcher instead of always centering on the
+    # primary display.
+    launch_position = None
+    if "--at" in sys.argv:
+        try:
+            idx = sys.argv.index("--at")
+            launch_position = (
+                int(sys.argv[idx + 1]),
+                int(sys.argv[idx + 2]),
+            )
+        except (IndexError, ValueError):
+            launch_position = None
+
+    app = BioSeqExplorerApp(launch_position=launch_position)
     app.mainloop()

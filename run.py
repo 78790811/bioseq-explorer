@@ -232,10 +232,18 @@ class LauncherWindow(ctk.CTk):
         self._refresh()
 
     def _open_explorer(self) -> None:
-        """Launch BioSeq Explorer GUI."""
+        """Launch BioSeq Explorer GUI.
+
+        Passes the launcher's current screen position as command-line
+        arguments so the new window opens on the same monitor instead
+        of always centering on the primary display.
+        """
+        self.update_idletasks()
+        x, y = self.winfo_x(), self.winfo_y()
+
         self.withdraw()
         subprocess.Popen(
-            [sys.executable, "app/main.py"],
+            [sys.executable, "app/main.py", "--at", str(x), str(y)],
             cwd=Path.cwd(),
         )
         self.destroy()
