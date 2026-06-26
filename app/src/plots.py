@@ -48,6 +48,8 @@ def open_plot_window(fig: Figure, title: str = "Plot") -> None:
 
     The toolbar provides zoom, pan, and save-to-disk functionality.
     The window is independent — closing it does not affect the main app.
+    Positioned relative to the main application window (not the screen)
+    so it always appears on the same monitor as BioSeq Explorer.
 
     Args:
         fig:   Matplotlib Figure object to display.
@@ -58,13 +60,25 @@ def open_plot_window(fig: Figure, title: str = "Plot") -> None:
     """
     window = tk.Toplevel()
     window.title(title)
-    window.geometry("860x620")
 
-    # Center on screen
-    window.update_idletasks()
-    x = (window.winfo_screenwidth() - 860) // 2
-    y = (window.winfo_screenheight() - 620) // 2
-    window.geometry(f"860x620+{x}+{y}")
+    dw, dh = 860, 620
+
+    # Center relative to the main application window, falling back to
+    # screen centering if no parent window can be found (e.g. when this
+    # is called in a context with no active Tk root yet).
+    parent = window.master
+    try:
+        parent.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+    except Exception:
+        window.update_idletasks()
+        x = (window.winfo_screenwidth() - dw) // 2
+        y = (window.winfo_screenheight() - dh) // 2
+
+    window.geometry(f"{dw}x{dh}+{x}+{y}")
 
     # Embed figure in the window
     canvas = FigureCanvasTkAgg(fig, master=window)
