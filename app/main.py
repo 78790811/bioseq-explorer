@@ -385,6 +385,7 @@ class HomeTab(ctk.CTkFrame):
             self.dataset_path = Path(path)
         except Exception as e:
             messagebox.showerror("Load error", f"Could not load file:\n{e}")
+            logger.log_action(f"Failed to load dataset: {e}", level="error")
             return
 
         # Validate required columns
@@ -412,6 +413,10 @@ class HomeTab(ctk.CTkFrame):
 
         # Populate Treeview
         self._populate_table()
+
+        logger.log_action(
+            f"Dataset loaded: {self.dataset_path.name} ({row_count} sequences)"
+        )
 
         # Load HUBA report from same results directory
         self._load_report(self.dataset_path.parent.parent / "REPORT.md")
@@ -1560,6 +1565,12 @@ class MotifAnalysisTab(ctk.CTkFrame):
             text=f"Motif: {motif}   |   Total occurrences: {total}"
         )
 
+        seqs_with_motif = int((search_df["count"] > 0).sum())
+        logger.log_action(
+            f"Motif search completed: '{motif}' — {total} occurrences "
+            f"across {seqs_with_motif} sequence(s)"
+        )
+
         # Accumulate result for report — update if motif already exists
         existing = next(
             (i for i, r in enumerate(self._motif_results)
@@ -1928,6 +1939,12 @@ class ORFAnalysisTab(ctk.CTkFrame):
         self.status_label.configure(
             text=f"✓ Done — {total_orfs} ORFs found (min {min_len} bp)",
             text_color="green" if total_orfs > 0 else "orange",
+        )
+
+        seqs_with_orfs = int((self.orf_df["n_orfs"] > 0).sum())
+        logger.log_action(
+            f"ORF analysis completed: {total_orfs} ORFs found "
+            f"(min length {min_len} bp) across {seqs_with_orfs} sequence(s)"
         )
 
         if total_orfs == 0:
@@ -2515,16 +2532,24 @@ class StatisticsTab(ctk.CTkFrame):
             else:
                 self._last_results.append(result)
 
-        # Show interpretation
-        if "error" in result:
-            self.result_label.configure(
-                text=result["error"], text_color="red"
-            )
-        else:
-            color = "#2CA02C" if result.get("significant") else "#E05A2B"
-            self.result_label.configure(
-                text=result.get("note", ""), text_color=color
-            )
+                # Show interpretation
+                if "error" in result:
+                    self.result_label.configure(
+                        text=result["error"], text_color="red"
+                    )
+                    logger.log_action(
+                        f"Statistical test failed: {result['error']}", level="error"
+                    )
+                else:
+                    color = "#2CA02C" if result.get("significant") else "#E05A2B"
+                    self.result_label.configure(
+                        text=result.get("note", ""), text_color=color
+                    )
+                    sig_label = "significant" if result.get("significant") else "not significant"
+                    logger.log_action(
+                        f"{result.get('test', 'Test')} on {result.get('metric', '')} "
+                        f"completed: {sig_label} (p={result.get('p_value', 'n/a')})"
+                    )
 
         # Populate results Treeview
         result_df = self._stats.result_to_dataframe(result)
@@ -2945,6 +2970,7 @@ class ReportTab(ctk.CTkFrame):
         self.status_label.configure(
             text=f"✓ PDF saved to: {pdf_path}", text_color="green"
         )
+        logger.log_action(f"PDF report saved: {pdf_path.name}")
         self._show_pdf_success_popup(pdf_path)
 
     def _show_pdf_success_popup(self, pdf_path: Path) -> None:
@@ -3332,6 +3358,7 @@ class ReportTab(ctk.CTkFrame):
             text=f"✓ Saved to: {report_path}",
             text_color="green",
         )
+        logger.log_action(f"Markdown report saved: {report_path.name}")
 
         # Show preview of generated report
         try:
