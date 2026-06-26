@@ -2073,13 +2073,18 @@ class ORFAnalysisTab(ctk.CTkFrame):
         """
         popup = tk.Toplevel(self)
         popup.title(f"ORFs — {seq_id}")
-        popup.geometry("720x440")
 
-        # Center on screen
-        popup.update_idletasks()
-        x = (popup.winfo_screenwidth() - 720) // 2
-        y = (popup.winfo_screenheight() - 440) // 2
-        popup.geometry(f"720x440+{x}+{y}")
+        dw, dh = 720, 440
+
+        # Center relative to the main application window so the popup
+        # always appears on the same monitor as BioSeq Explorer.
+        app = self.winfo_toplevel()
+        app.update_idletasks()
+        px, py = app.winfo_x(), app.winfo_y()
+        pw, ph = app.winfo_width(), app.winfo_height()
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        popup.geometry(f"{dw}x{dh}+{x}+{y}")
 
         header = tk.Frame(popup)
         header.pack(fill="x", padx=12, pady=(10, 4))
