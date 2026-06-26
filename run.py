@@ -212,7 +212,7 @@ class LauncherWindow(ctk.CTk):
             " & echo   python fetch_ncbi.py --genes BRCA1 --force     Re-download existing file"
             " & echo   python generate_test_data.py                   Generate test CSV/TSV files"
             " & echo."
-            " & echo   dir source\*_sequences.fasta                   List downloaded sequence files"
+            " & echo   dir source\\*_sequences.fasta                   List downloaded sequence files"
             " & echo."
             " & echo Type a command above and press Enter."
             " & echo ============================================================"
