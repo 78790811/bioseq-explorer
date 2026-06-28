@@ -3012,14 +3012,14 @@ class ReportTab(ctk.CTkFrame):
         tk.Label(
             popup,
             text="✓  PDF report generated successfully",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 13, "bold"),
             fg="#2CA02C",
         ).pack(pady=(20, 8))
 
         tk.Label(
             popup,
             text=str(pdf_path),
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 10),
             fg="#6B7280",
             wraplength=380,
             justify="center",
