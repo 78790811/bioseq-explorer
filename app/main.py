@@ -2094,7 +2094,8 @@ class ORFAnalysisTab(ctk.CTkFrame):
         tk.Label(
             header,
             text=f"Sequence: {seq_id}",
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 13, "bold"),
+            fg="#1F6AA5",
         ).pack(side="left")
         tk.Label(
             header,
