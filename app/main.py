@@ -120,14 +120,19 @@ def _build_popup_shell(
     title: str,
     variant: str,
     width: int = 440,
-    height: int = 200,
 ) -> tuple[tk.Toplevel, tk.Widget]:
-    """Build the shared popup window shell (icon + sizing + centering).
+    """Build the shared popup window shell (icon + width + variant style).
 
-    Creates the Toplevel, centers it on the main app window, and places
-    the variant icon at the top. The caller is responsible for adding
-    the message label, any extra widgets, and the button row below the
-    returned content anchor.
+    Creates the Toplevel and places the variant icon at the top. The
+    caller adds the message label, any extra widgets, and the button
+    row below the icon, then MUST call _finalize_popup() once everything
+    is packed — that's what actually sizes and centers the window.
+
+    The height is deliberately not set here: popup content length varies
+    a lot (a one-line "Run a search first" vs. a multi-line file path),
+    and a fixed height either clips long content or leaves dead space
+    around short content. Sizing happens in _finalize_popup() instead,
+    once Tkinter knows how tall the packed content actually is.
 
     Args:
         parent:  Any widget inside the app, used to find the main window
@@ -135,10 +140,9 @@ def _build_popup_shell(
         title:   Popup window title.
         variant: One of "error", "warning", "success", "info" — selects
                  the icon glyph and accent color from _POPUP_VARIANTS.
-        width:   Popup width in pixels.
-        height:  Popup height in pixels (used only for initial centering;
-                 the popup is not resizable so this should fit the content
-                 the caller plans to add).
+        width:   Popup width in pixels. Fixed (unlike height) because
+                 wraplength on the message label is set relative to this,
+                 so the width needs to be known up front.
 
     Returns:
         Tuple of (popup, app) — the new Toplevel and the main app window
@@ -151,14 +155,12 @@ def _build_popup_shell(
     popup.title(title)
     popup.resizable(False, False)
     popup.configure(bg=POPUP_BG)
+    # Placeholder geometry — _finalize_popup() replaces this once the
+    # real content height is known. Setting *some* geometry now avoids
+    # a visible jump from the platform's default Toplevel placement.
+    popup.geometry(f"{width}x10")
 
     app = parent.winfo_toplevel()
-    app.update_idletasks()
-    px, py = app.winfo_x(), app.winfo_y()
-    pw, ph = app.winfo_width(), app.winfo_height()
-    x = px + (pw - width) // 2
-    y = py + (ph - height) // 2
-    popup.geometry(f"{width}x{height}+{x}+{y}")
 
     tk.Label(
         popup,
@@ -168,10 +170,44 @@ def _build_popup_shell(
         bg=POPUP_BG,
     ).pack(pady=(20, 4))
 
-    popup.grab_set()
     popup.transient(app)
 
     return popup, app
+
+
+def _finalize_popup(popup: tk.Toplevel, app: tk.Widget, width: int) -> None:
+    """Size the popup to its packed content and center it on the app window.
+
+    Call this once, after every widget inside the popup has been packed.
+    Uses winfo_reqheight() (Tkinter's own computed "natural" height for
+    the packed content) instead of a hardcoded guess, so popups with a
+    one-line message and popups with a wrapped multi-line file path both
+    end up sized correctly — no clipped text, no cut-off buttons.
+
+    Args:
+        popup:  The Toplevel returned by _build_popup_shell().
+        app:    The main app window, also returned by _build_popup_shell().
+        width:  Same width passed to _build_popup_shell() — kept in sync
+                so the centering math is consistent with the wraplength
+                the caller used for its labels.
+
+    Returns:
+        None
+    """
+    popup.update_idletasks()
+    height = popup.winfo_reqheight()
+
+    app.update_idletasks()
+    px, py = app.winfo_x(), app.winfo_y()
+    pw, ph = app.winfo_width(), app.winfo_height()
+    x = px + (pw - width) // 2
+    y = py + (ph - height) // 2
+    popup.geometry(f"{width}x{height}+{x}+{y}")
+
+    # grab_set() is deferred to here (rather than _build_popup_shell) so
+    # the window is fully laid out and positioned before it starts
+    # capturing input — avoids a brief flash at the wrong size/position.
+    popup.grab_set()
 
 
 def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
@@ -192,7 +228,8 @@ def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
     Returns:
         None
     """
-    popup, _ = _build_popup_shell(parent, title, "error", width=440, height=200)
+    width = 440
+    popup, app = _build_popup_shell(parent, title, "error", width=width)
 
     tk.Label(
         popup,
@@ -211,6 +248,8 @@ def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
         command=popup.destroy,
     ).pack(pady=(0, 16))
 
+    _finalize_popup(popup, app, width)
+
 
 def show_info_popup(parent: tk.Widget, title: str, message: str) -> None:
     """Show a styled informational popup instead of messagebox.showinfo.
@@ -228,7 +267,8 @@ def show_info_popup(parent: tk.Widget, title: str, message: str) -> None:
     Returns:
         None
     """
-    popup, _ = _build_popup_shell(parent, title, "info", width=400, height=180)
+    width = 400
+    popup, app = _build_popup_shell(parent, title, "info", width=width)
 
     tk.Label(
         popup,
@@ -246,6 +286,8 @@ def show_info_popup(parent: tk.Widget, title: str, message: str) -> None:
         bg=POPUP_BUTTON_BG, fg=POPUP_BUTTON_FG,
         command=popup.destroy,
     ).pack(pady=(0, 16))
+
+    _finalize_popup(popup, app, width)
 
 
 def show_warning_popup(
@@ -280,7 +322,8 @@ def show_warning_popup(
         True if the user chose to continue, False if they cancelled
         (including closing the popup via the window controls).
     """
-    popup, _ = _build_popup_shell(parent, title, "warning", width=440, height=220)
+    width = 440
+    popup, app = _build_popup_shell(parent, title, "warning", width=width)
 
     result = {"confirmed": False}
 
@@ -321,6 +364,11 @@ def show_warning_popup(
     # Treat closing the window (titlebar X) the same as Cancel.
     popup.protocol("WM_DELETE_WINDOW", on_cancel)
 
+    # Finalize (size + center + grab_set) before the blocking wait —
+    # wait_window() doesn't return until the popup is destroyed, so any
+    # sizing code placed after it would never run.
+    _finalize_popup(popup, app, width)
+
     popup.wait_window()
     return result["confirmed"]
 
@@ -357,8 +405,8 @@ def show_success_popup(
     Returns:
         None
     """
-    height = 220 if detail else 180
-    popup, _ = _build_popup_shell(parent, title, "success", width=440, height=height)
+    width = 440
+    popup, app = _build_popup_shell(parent, title, "success", width=width)
 
     tk.Label(
         popup,
@@ -397,6 +445,8 @@ def show_success_popup(
         font=("Segoe UI", 11),
         command=popup.destroy,
     ).pack(side="left")
+
+    _finalize_popup(popup, app, width)
 
 # ---------------------------------------------------------------------------
 # Tab: Home
@@ -676,17 +726,33 @@ class HomeTab(ctk.CTkFrame):
         if not path:
             return  # User cancelled
 
-        # Warn if selected file does not look like a clean_dataset
+        # Files that aren't CSV at all (e.g. .fasta, .tsv, .txt) can't be
+        # parsed as a dataset no matter what — reject outright rather than
+        # asking the user whether to "continue anyway".
         filename = Path(path).name
+        if Path(path).suffix.lower() != ".csv":
+            show_error_popup(
+                self, "Unsupported file type",
+                f"'{filename}' is not a CSV file.\n\n"
+                f"BioSeq Explorer can only load clean_dataset_*.csv files "
+                f"generated by HUBA (found in results/tables/).",
+            )
+            logger.log_action(
+                f"Rejected dataset '{filename}': not a CSV file",
+                level="error",
+            )
+            return
+
+        # A CSV with an unexpected name might still be usable (e.g. it was
+        # renamed, or hand-built with the right columns) — warn, but let
+        # the user decide whether to continue.
         if not filename.startswith("clean_dataset_"):
             proceed = show_warning_popup(
-                self, "Unexpected file",
-                f"The selected file '{filename}' does not appear to be a "
-                f"clean_dataset_*.csv file generated by HUBA.\n\n"
-                f"BioSeq Explorer requires a file with columns:\n"
-                f"  id, sequence, _source\n\n"
-                f"The file will still be checked for these columns next, "
-                f"and will be rejected if they're missing.",
+                self, "Unexpected file name",
+                f"'{filename}' doesn't match the clean_dataset_*.csv "
+                f"naming pattern HUBA normally produces.\n\n"
+                f"It will still be checked for the required columns "
+                f"(id, sequence, _source) next, and rejected if missing.",
             )
             if not proceed:
                 return
