@@ -100,6 +100,14 @@ POPUP_PATH_COLOR = "#6B7280"     # secondary/dim text (e.g. file paths)
 POPUP_BUTTON_BG = "#1F6AA5"      # primary action button (matches app accent)
 POPUP_BUTTON_FG = "white"
 
+# Background for the inline "this tab could not be loaded" error block
+# (QualityControlTab / StatisticsTab / ReportTab). A light neutral gray,
+# distinct from the tab's own background, so the whole error block reads
+# as one consistent panel — every label inside it uses this exact color
+# too, rather than leaving bg unset and inheriting whatever default the
+# platform theme happens to pick for a plain tk.Label.
+INLINE_ERROR_BG = "#EDEFF2"
+
 # Per-variant icon glyph + accent color. The glyphs are deliberately
 # different shapes (not just different colors) so the popup type is
 # still distinguishable without relying on color perception alone:
@@ -447,6 +455,59 @@ def show_success_popup(
     ).pack(side="left")
 
     _finalize_popup(popup, app, width)
+
+
+def _render_inline_error(placeholder: tk.Widget, message: str) -> None:
+    """Render a "this tab could not be loaded" error block inside a tab.
+
+    Shared by QualityControlTab, StatisticsTab, and ReportTab — all three
+    show essentially the same thing when the loaded dataset can't be
+    analyzed (e.g. a bad 'sequence' column). Everything lives inside one
+    tk.Frame with an explicit background, and every label inside it uses
+    that exact same background — no label is left to inherit whatever
+    default a plain tk.Label happens to pick on a given platform, which
+    is what previously caused the error text to sit on a visibly
+    different-colored patch than the panel around it.
+
+    Args:
+        placeholder: The (already-emptied) container to render into —
+                     typically self._placeholder from the calling tab.
+        message:     Error description to display (e.g. a ValueError
+                     message from analyzer.run_quality_analysis()).
+
+    Returns:
+        None
+    """
+    panel = tk.Frame(placeholder, bg=INLINE_ERROR_BG)
+    panel.pack(fill="both", expand=True)
+
+    tk.Label(
+        panel,
+        text="❌  This tab could not be loaded",
+        font=("Segoe UI", 14, "bold"),
+        fg=_POPUP_VARIANTS["error"]["color"],
+        bg=INLINE_ERROR_BG,
+    ).pack(pady=(40, 8))
+
+    tk.Label(
+        panel,
+        text=message,
+        font=("Segoe UI", 11),
+        fg=POPUP_PATH_COLOR,
+        bg=INLINE_ERROR_BG,
+        wraplength=500,
+        justify="center",
+    ).pack()
+
+    tk.Label(
+        panel,
+        text="Please load a clean_dataset_*.csv file from results/tables/",
+        font=("Segoe UI", 11),
+        fg=POPUP_PATH_COLOR,
+        bg=INLINE_ERROR_BG,
+        wraplength=500,
+        justify="center",
+    ).pack(pady=(8, 0))
 
 # ---------------------------------------------------------------------------
 # Tab: Home
@@ -1186,31 +1247,7 @@ class QualityControlTab(ctk.CTkFrame):
         """
         for widget in self._placeholder.winfo_children():
             widget.destroy()
-        tk.Label(
-            self._placeholder,
-            text="❌  This tab could not be loaded",
-            font=("Segoe UI", 14, "bold"),
-            fg="#DC2626",
-            bg=self._placeholder.cget("fg_color")[1]
-            if isinstance(self._placeholder.cget("fg_color"), (list, tuple))
-            else "#F9FAFB",
-        ).pack(pady=(40, 8))
-        tk.Label(
-            self._placeholder,
-            text=message,
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack()
-        tk.Label(
-            self._placeholder,
-            text="Please load a clean_dataset_*.csv file from results/tables/",
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack(pady=(8, 0))
+        _render_inline_error(self._placeholder, message)
 
     def reset(self) -> None:
         """Reset tab to placeholder state for a new dataset load.
@@ -2591,28 +2628,7 @@ class StatisticsTab(ctk.CTkFrame):
         """
         for widget in self._placeholder.winfo_children():
             widget.destroy()
-        tk.Label(
-            self._placeholder,
-            text="❌  This tab could not be loaded",
-            font=("Segoe UI", 14, "bold"),
-            fg="#DC2626",
-        ).pack(pady=(40, 8))
-        tk.Label(
-            self._placeholder,
-            text=message,
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack()
-        tk.Label(
-            self._placeholder,
-            text="Please load a clean_dataset_*.csv file from results/tables/",
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack(pady=(8, 0))
+        _render_inline_error(self._placeholder, message)
     def reset(self) -> None:
         """Reset tab to placeholder state for a new dataset load.
 
@@ -3090,28 +3106,7 @@ class ReportTab(ctk.CTkFrame):
         """
         for widget in self._placeholder.winfo_children():
             widget.destroy()
-        tk.Label(
-            self._placeholder,
-            text="❌  This tab could not be loaded",
-            font=("Segoe UI", 14, "bold"),
-            fg="#DC2626",
-        ).pack(pady=(40, 8))
-        tk.Label(
-            self._placeholder,
-            text=message,
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack()
-        tk.Label(
-            self._placeholder,
-            text="Please load a clean_dataset_*.csv file from results/tables/",
-            font=("Segoe UI", 11),
-            fg="#6B7280",
-            wraplength=500,
-            justify="center",
-        ).pack(pady=(8, 0))
+        _render_inline_error(self._placeholder, message)
     def reset(self) -> None:
         """Reset tab to placeholder state for a new dataset load.
 
