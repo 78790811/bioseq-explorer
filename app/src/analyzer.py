@@ -93,7 +93,9 @@ def run_quality_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
     Returns:
         New DataFrame with the three additional metric columns.
-        Raises ValueError if 'sequence' column is missing.
+        Raises ValueError if the 'sequence' column is missing, or if any
+        row's sequence value isn't a usable string (e.g. an empty CSV
+        cell that pandas read in as NaN/float instead of text).
     """
     if "sequence" not in df.columns:
         raise ValueError(
@@ -101,6 +103,30 @@ def run_quality_analysis(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     result = df.copy()
+
+    # Catch non-string sequence values up front, with a message that
+    # names which rows are affected. Without this check, a blank CSV
+    # cell becomes a float NaN, and compute_gc_content()'s call to
+    # sequence.upper() fails several layers down inside .apply() with
+    # a bare "'float' object has no attribute 'upper'" — accurate, but
+    # meaningless to anyone reading it without already knowing the cause.
+    invalid_mask = ~result["sequence"].apply(lambda v: isinstance(v, str))
+    if invalid_mask.any():
+        bad_rows = result.loc[invalid_mask]
+        count = len(bad_rows)
+        if "id" in bad_rows.columns:
+            ids = bad_rows["id"].astype(str).head(5).tolist()
+            id_list = ", ".join(ids)
+            if count > 5:
+                id_list += f", and {count - 5} more"
+            row_desc = f"rows: {id_list}"
+        else:
+            row_desc = f"{count} row(s)"
+        raise ValueError(
+            f"The 'sequence' column contains {count} empty or non-text "
+            f"value(s) ({row_desc}). Check the source CSV for blank "
+            f"cells in that column and reload the dataset."
+        )
 
     # Apply per-sequence functions to every row
     result["gc_content"] = result["sequence"].apply(compute_gc_content)

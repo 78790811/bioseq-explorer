@@ -3443,7 +3443,7 @@ class ReportTab(ctk.CTkFrame):
         dialog = tk.Toplevel(self)
         dialog.title("Generate PDF — Select sections")
         dialog.resizable(False, True)
-        dialog.configure(bg="#FFFFFF")
+        dialog.configure(bg=POPUP_BG)
 
         # Center relative to parent window
         self.winfo_toplevel().update_idletasks()
@@ -3451,7 +3451,11 @@ class ReportTab(ctk.CTkFrame):
         py = self.winfo_toplevel().winfo_y()
         pw = self.winfo_toplevel().winfo_width()
         ph = self.winfo_toplevel().winfo_height()
-        dw = 460
+        # Wide enough that the window titlebar ("Generate PDF — Select
+        # sections", plus the OS-drawn icon/close button) isn't clipped —
+        # 460px was sized for the body content but is too narrow for the
+        # titlebar itself on Windows.
+        dw = 520
         dialog.update_idletasks()
         x = px + (pw - dw) // 2
         y = py + 80
@@ -3462,6 +3466,7 @@ class ReportTab(ctk.CTkFrame):
             text="📑  Select sections to include in PDF",
             font=("Segoe UI", 13, "bold"),
             fg="#1F6AA5",
+            bg=POPUP_BG,
         ).pack(anchor="w", padx=20, pady=(16, 4))
 
         tk.Label(
@@ -3469,6 +3474,7 @@ class ReportTab(ctk.CTkFrame):
             text="Greyed out sections have no data available.",
             font=("Segoe UI", 10),
             fg="gray",
+            bg=POPUP_BG,
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
         # Scrollable frame for checkboxes
@@ -3604,7 +3610,7 @@ class ReportTab(ctk.CTkFrame):
         vars_["huba_report"] = section_header("HUBA Pipeline Report")
 
         # ── Buttons ───────────────────────────────────────────────────────
-        btn_frame = tk.Frame(dialog, bg="white")
+        btn_frame = tk.Frame(dialog, bg=POPUP_BG)
         btn_frame.pack(fill="x", pady=(8, 12), padx=20)
 
         def on_generate():
