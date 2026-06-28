@@ -549,6 +549,7 @@ class HomeTab(ctk.CTkFrame):
         popup.title(f"Sequence details — {row_data.get('id', '')}")
         popup.geometry("640x420")
         popup.resizable(False, False)
+        popup.configure(bg="#FFFFFF")
 
         # Center relative to main app window
         app = self.winfo_toplevel()
@@ -577,17 +578,17 @@ class HomeTab(ctk.CTkFrame):
             row = tk.Frame(container)
             row.pack(fill="x", pady=2)
             tk.Label(
-                row, text=f"{key}:", font=("Segoe UI", 10, "bold"),
+                row, text=f"{key}:", font=("Segoe UI", 11, "bold"),
                 width=12, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=str(value), font=("Segoe UI", 10),
+                row, text=str(value), font=("Segoe UI", 11),
                 anchor="w", wraplength=460, justify="left",
             ).pack(side="left", fill="x", expand=True)
 
         # Full sequence in a scrollable text box
         tk.Label(
-            container, text="sequence:", font=("Segoe UI", 10, "bold"),
+            container, text="sequence:", font=("Segoe UI", 11, "bold"),
             anchor="w",
         ).pack(anchor="w", pady=(10, 2))
 
@@ -618,7 +619,7 @@ class HomeTab(ctk.CTkFrame):
 
         copy_btn = tk.Button(
             btn_frame, text="Copy sequence", width=16,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 11, "bold"),
             bg="#1F6AA5", fg="white",
             command=copy_sequence,
         )
@@ -626,7 +627,7 @@ class HomeTab(ctk.CTkFrame):
 
         tk.Button(
             btn_frame, text="Close", width=12,
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 11),
             command=popup.destroy,
         ).pack(side="right")
 
@@ -1128,6 +1129,7 @@ class QualityControlTab(ctk.CTkFrame):
         popup.title(f"Sequence metrics — {row_data.get('id', '')}")
         popup.geometry("440x320")
         popup.resizable(False, False)
+        popup.configure(bg="#FFFFFF")
 
         # Center relative to main app window
         app = self.winfo_toplevel()
@@ -2073,6 +2075,7 @@ class ORFAnalysisTab(ctk.CTkFrame):
         """
         popup = tk.Toplevel(self)
         popup.title(f"ORFs — {seq_id}")
+        popup.configure(bg="#FFFFFF")
 
         dw, dh = 720, 440
 
@@ -2992,6 +2995,7 @@ class ReportTab(ctk.CTkFrame):
         popup = tk.Toplevel(self)
         popup.title("PDF generated")
         popup.resizable(False, False)
+        popup.configure(bg="#FFFFFF")
 
         # Center relative to parent window
         self.winfo_toplevel().update_idletasks()
@@ -3074,6 +3078,7 @@ class ReportTab(ctk.CTkFrame):
         dialog = tk.Toplevel(self)
         dialog.title("Generate PDF — Select sections")
         dialog.resizable(False, True)
+        dialog.configure(bg="#FFFFFF")
 
         # Center relative to parent window
         self.winfo_toplevel().update_idletasks()
