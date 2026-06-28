@@ -86,8 +86,93 @@ def apply_treeview_style() -> None:
     )
 
 # ---------------------------------------------------------------------------
-# Helper — styled error popup
+# Helper — shared popup palette and shell (error / warning / success)
 # ---------------------------------------------------------------------------
+#
+# All three popup variants share one visual language: white popup
+# background, the same fonts, the same button shapes — the only things
+# that change are the icon glyph and the accent color. Centralizing the
+# palette here means a color tweak only has to happen in one place.
+
+POPUP_BG = "#FFFFFF"
+POPUP_TEXT_COLOR = "#374151"     # body message text
+POPUP_PATH_COLOR = "#6B7280"     # secondary/dim text (e.g. file paths)
+POPUP_BUTTON_BG = "#1F6AA5"      # primary action button (matches app accent)
+POPUP_BUTTON_FG = "white"
+
+# Per-variant icon glyph + accent color. The glyphs are deliberately
+# different shapes (not just different colors) so the popup type is
+# still distinguishable without relying on color perception alone:
+#   error   -> triangle (stop / something failed)
+#   warning -> circled exclamation (caution, but not fatal)
+#   success -> circled check (completed normally)
+#   info    -> circled "i" (plain notice, nothing to confirm)
+_POPUP_VARIANTS = {
+    "error":   {"icon": "⚠", "color": "#DC2626"},
+    "warning": {"icon": "❕", "color": "#E08A2C"},
+    "success": {"icon": "✅", "color": "#2CA02C"},
+    "info":    {"icon": "ℹ", "color": "#1F6AA5"},
+}
+
+
+def _build_popup_shell(
+    parent: tk.Widget,
+    title: str,
+    variant: str,
+    width: int = 440,
+    height: int = 200,
+) -> tuple[tk.Toplevel, tk.Widget]:
+    """Build the shared popup window shell (icon + sizing + centering).
+
+    Creates the Toplevel, centers it on the main app window, and places
+    the variant icon at the top. The caller is responsible for adding
+    the message label, any extra widgets, and the button row below the
+    returned content anchor.
+
+    Args:
+        parent:  Any widget inside the app, used to find the main window
+                 for centering and to anchor the popup correctly.
+        title:   Popup window title.
+        variant: One of "error", "warning", "success", "info" — selects
+                 the icon glyph and accent color from _POPUP_VARIANTS.
+        width:   Popup width in pixels.
+        height:  Popup height in pixels (used only for initial centering;
+                 the popup is not resizable so this should fit the content
+                 the caller plans to add).
+
+    Returns:
+        Tuple of (popup, app) — the new Toplevel and the main app window
+        (already resolved via winfo_toplevel()), so callers can reuse
+        `app` for things like re-centering child dialogs.
+    """
+    style = _POPUP_VARIANTS[variant]
+
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.resizable(False, False)
+    popup.configure(bg=POPUP_BG)
+
+    app = parent.winfo_toplevel()
+    app.update_idletasks()
+    px, py = app.winfo_x(), app.winfo_y()
+    pw, ph = app.winfo_width(), app.winfo_height()
+    x = px + (pw - width) // 2
+    y = py + (ph - height) // 2
+    popup.geometry(f"{width}x{height}+{x}+{y}")
+
+    tk.Label(
+        popup,
+        text=style["icon"],
+        font=("Segoe UI", 28),
+        fg=style["color"],
+        bg=POPUP_BG,
+    ).pack(pady=(20, 4))
+
+    popup.grab_set()
+    popup.transient(app)
+
+    return popup, app
+
 
 def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
     """Show a styled error popup instead of the default messagebox.
@@ -107,32 +192,14 @@ def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
     Returns:
         None
     """
-    popup = tk.Toplevel(parent)
-    popup.title(title)
-    popup.resizable(False, False)
-    popup.configure(bg="#FFFFFF")
-
-    app = parent.winfo_toplevel()
-    app.update_idletasks()
-    px, py = app.winfo_x(), app.winfo_y()
-    pw, ph = app.winfo_width(), app.winfo_height()
-    dw, dh = 440, 200
-    x = px + (pw - dw) // 2
-    y = py + (ph - dh) // 2
-    popup.geometry(f"{dw}x{dh}+{x}+{y}")
-
-    tk.Label(
-        popup,
-        text="⚠",
-        font=("Segoe UI", 28),
-        fg="#DC2626",
-    ).pack(pady=(20, 4))
+    popup, _ = _build_popup_shell(parent, title, "error", width=440, height=200)
 
     tk.Label(
         popup,
         text=message,
         font=("Segoe UI", 11),
-        fg="#374151",
+        fg=POPUP_TEXT_COLOR,
+        bg=POPUP_BG,
         wraplength=380,
         justify="center",
     ).pack(padx=20, pady=(0, 16))
@@ -140,12 +207,196 @@ def show_error_popup(parent: tk.Widget, title: str, message: str) -> None:
     tk.Button(
         popup, text="Close", width=12,
         font=("Segoe UI", 11),
-        bg="#1F6AA5", fg="white",
+        bg=POPUP_BUTTON_BG, fg=POPUP_BUTTON_FG,
         command=popup.destroy,
     ).pack(pady=(0, 16))
 
-    popup.grab_set()
-    popup.transient(app)
+
+def show_info_popup(parent: tk.Widget, title: str, message: str) -> None:
+    """Show a styled informational popup instead of messagebox.showinfo.
+
+    Use this for plain, non-actionable notices — e.g. "do X first" —
+    where there's nothing to confirm or undo, just something for the
+    user to acknowledge.
+
+    Args:
+        parent:  Any widget inside the app, used to find the main window
+                 for centering and to anchor the popup correctly.
+        title:   Popup window title.
+        message: User-facing message.
+
+    Returns:
+        None
+    """
+    popup, _ = _build_popup_shell(parent, title, "info", width=400, height=180)
+
+    tk.Label(
+        popup,
+        text=message,
+        font=("Segoe UI", 11),
+        fg=POPUP_TEXT_COLOR,
+        bg=POPUP_BG,
+        wraplength=340,
+        justify="center",
+    ).pack(padx=20, pady=(0, 16))
+
+    tk.Button(
+        popup, text="Close", width=12,
+        font=("Segoe UI", 11),
+        bg=POPUP_BUTTON_BG, fg=POPUP_BUTTON_FG,
+        command=popup.destroy,
+    ).pack(pady=(0, 16))
+
+
+def show_warning_popup(
+    parent: tk.Widget,
+    title: str,
+    message: str,
+    confirm_text: str = "Continue Anyway",
+    cancel_text: str = "Cancel",
+) -> bool:
+    """Show a styled warning popup asking the user to confirm or cancel.
+
+    Use this in place of messagebox.askyesno for non-fatal situations
+    where the app can proceed but wants the user to confirm first (e.g.
+    a file that doesn't match the expected naming pattern but might
+    still be usable).
+
+    This call blocks until the user picks an option, mirroring the
+    blocking behavior of messagebox.askyesno.
+
+    Args:
+        parent:       Any widget inside the app, used to find the main
+                      window for centering and to anchor the popup.
+        title:        Popup window title.
+        message:      User-facing warning message explaining what looks
+                      off and what continuing anyway will or won't do.
+        confirm_text: Label for the button that proceeds. Defaults to
+                      "Continue Anyway".
+        cancel_text:  Label for the button that backs out. Defaults to
+                      "Cancel".
+
+    Returns:
+        True if the user chose to continue, False if they cancelled
+        (including closing the popup via the window controls).
+    """
+    popup, _ = _build_popup_shell(parent, title, "warning", width=440, height=220)
+
+    result = {"confirmed": False}
+
+    tk.Label(
+        popup,
+        text=message,
+        font=("Segoe UI", 11),
+        fg=POPUP_TEXT_COLOR,
+        bg=POPUP_BG,
+        wraplength=380,
+        justify="center",
+    ).pack(padx=20, pady=(0, 16))
+
+    btn_frame = tk.Frame(popup, bg=POPUP_BG)
+    btn_frame.pack(pady=(0, 16))
+
+    def on_confirm():
+        result["confirmed"] = True
+        popup.destroy()
+
+    def on_cancel():
+        result["confirmed"] = False
+        popup.destroy()
+
+    tk.Button(
+        btn_frame, text=cancel_text, width=12,
+        font=("Segoe UI", 11),
+        command=on_cancel,
+    ).pack(side="left", padx=(0, 8))
+
+    tk.Button(
+        btn_frame, text=confirm_text, width=14,
+        font=("Segoe UI", 11, "bold"),
+        bg=POPUP_BUTTON_BG, fg=POPUP_BUTTON_FG,
+        command=on_confirm,
+    ).pack(side="left")
+
+    # Treat closing the window (titlebar X) the same as Cancel.
+    popup.protocol("WM_DELETE_WINDOW", on_cancel)
+
+    popup.wait_window()
+    return result["confirmed"]
+
+
+def show_success_popup(
+    parent: tk.Widget,
+    title: str,
+    message: str,
+    detail: str | None = None,
+    action_text: str | None = None,
+    on_action=None,
+) -> None:
+    """Show a styled success popup, optionally with one extra action button.
+
+    Use this for things like "report generated successfully" — anywhere
+    the app previously used messagebox.showinfo or a one-off popup.
+
+    Args:
+        parent:      Any widget inside the app, used to find the main
+                     window for centering and to anchor the popup.
+        title:       Popup window title.
+        message:     Main success message (e.g. "Report generated
+                     successfully").
+        detail:      Optional secondary line, dimmer and smaller — e.g.
+                     a file path. Omit if there's nothing to show.
+        action_text: Optional label for an extra button placed before
+                     "Close" (e.g. "Open PDF"). Omit for a plain
+                     single-button popup.
+        on_action:   Callable invoked when the action button is pressed.
+                     Required if action_text is given; the popup stays
+                     open afterward so the user can still see the detail
+                     or retry the action if it fails.
+
+    Returns:
+        None
+    """
+    height = 220 if detail else 180
+    popup, _ = _build_popup_shell(parent, title, "success", width=440, height=height)
+
+    tk.Label(
+        popup,
+        text=message,
+        font=("Segoe UI", 13, "bold"),
+        fg=_POPUP_VARIANTS["success"]["color"],
+        bg=POPUP_BG,
+        wraplength=380,
+        justify="center",
+    ).pack(padx=20, pady=(0, 8 if detail else 16))
+
+    if detail:
+        tk.Label(
+            popup,
+            text=detail,
+            font=("Segoe UI", 10),
+            fg=POPUP_PATH_COLOR,
+            bg=POPUP_BG,
+            wraplength=380,
+            justify="center",
+        ).pack(padx=20, pady=(0, 16))
+
+    btn_frame = tk.Frame(popup, bg=POPUP_BG)
+    btn_frame.pack(pady=(0, 16))
+
+    if action_text is not None:
+        tk.Button(
+            btn_frame, text=action_text, width=14,
+            font=("Segoe UI", 11, "bold"),
+            bg=POPUP_BUTTON_BG, fg=POPUP_BUTTON_FG,
+            command=on_action,
+        ).pack(side="left", padx=(0, 8))
+
+    tk.Button(
+        btn_frame, text="Close", width=12,
+        font=("Segoe UI", 11),
+        command=popup.destroy,
+    ).pack(side="left")
 
 # ---------------------------------------------------------------------------
 # Tab: Home
@@ -428,15 +679,14 @@ class HomeTab(ctk.CTkFrame):
         # Warn if selected file does not look like a clean_dataset
         filename = Path(path).name
         if not filename.startswith("clean_dataset_"):
-            proceed = messagebox.askyesno(
-                "Unexpected file",
+            proceed = show_warning_popup(
+                self, "Unexpected file",
                 f"The selected file '{filename}' does not appear to be a "
                 f"clean_dataset_*.csv file generated by HUBA.\n\n"
                 f"BioSeq Explorer requires a file with columns:\n"
                 f"  id, sequence, _source\n\n"
-                f"If this file is missing these columns, the following tabs\n"
-                f"will not work: Quality Control, Statistics, Report.\n\n"
-                f"Do you want to continue anyway?",
+                f"The file will still be checked for these columns next, "
+                f"and will be rejected if they're missing.",
             )
             if not proceed:
                 return
@@ -1721,7 +1971,7 @@ class MotifAnalysisTab(ctk.CTkFrame):
                 title=f"Motif '{motif}' — occurrences by gene",
             )
         else:
-            messagebox.showinfo("No plot", "Run a search first.")
+            show_info_popup(self, "No plot", "Run a search first.")
 
 
 # ---------------------------------------------------------------------------
@@ -3081,41 +3331,6 @@ class ReportTab(ctk.CTkFrame):
         """
         import os
 
-        popup = tk.Toplevel(self)
-        popup.title("PDF generated")
-        popup.resizable(False, False)
-        popup.configure(bg="#FFFFFF")
-
-        # Center relative to parent window
-        self.winfo_toplevel().update_idletasks()
-        px = self.winfo_toplevel().winfo_x()
-        py = self.winfo_toplevel().winfo_y()
-        pw = self.winfo_toplevel().winfo_width()
-        ph = self.winfo_toplevel().winfo_height()
-        dw, dh = 420, 180
-        x = px + (pw - dw) // 2
-        y = py + (ph - dh) // 2
-        popup.geometry(f"{dw}x{dh}+{x}+{y}")
-
-        tk.Label(
-            popup,
-            text="✓  PDF report generated successfully",
-            font=("Segoe UI", 13, "bold"),
-            fg="#2CA02C",
-        ).pack(pady=(20, 8))
-
-        tk.Label(
-            popup,
-            text=str(pdf_path),
-            font=("Segoe UI", 10),
-            fg="#6B7280",
-            wraplength=380,
-            justify="center",
-        ).pack(pady=(0, 16))
-
-        btn_frame = tk.Frame(popup)
-        btn_frame.pack(pady=(0, 16))
-
         def on_open():
             try:
                 os.startfile(str(pdf_path))
@@ -3127,20 +3342,13 @@ class ReportTab(ctk.CTkFrame):
                 )
                 logger.log_action(f"Failed to open PDF: {e}", level="error")
 
-        tk.Button(
-            btn_frame, text="Open PDF", width=14,
-            font=("Segoe UI", 11, "bold"),
-            bg="#1F6AA5", fg="white",
-            command=on_open,
-        ).pack(side="left", padx=(0, 8))
-
-        tk.Button(
-            btn_frame, text="Close", width=12,
-            font=("Segoe UI", 11),
-            command=popup.destroy,
-        ).pack(side="left")
-
-        popup.grab_set()
+        show_success_popup(
+            self, "PDF generated",
+            "PDF report generated successfully",
+            detail=str(pdf_path),
+            action_text="Open PDF",
+            on_action=on_open,
+        )
 
     def _show_pdf_section_dialog(
         self,
@@ -3476,10 +3684,11 @@ class ReportTab(ctk.CTkFrame):
         except Exception:
             pass
 
-        messagebox.showinfo(
-            "Report generated",
-            f"Report saved successfully:\n{report_path}\n\n"
-            f"Plots saved to:\n{output_dir / 'report_plots'}",
+        show_success_popup(
+            self, "Report generated",
+            "Report generated successfully",
+            detail=f"Saved to: {report_path}\n"
+                   f"Plots saved to: {output_dir / 'report_plots'}",
         )
 
 
