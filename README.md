@@ -28,11 +28,12 @@ bioseq_explorer/
 │   ├── config.py             ← GUI configuration and analysis constants
 │   └── src/
 │       ├── analyzer.py       ← GC%, N%, sequence length metrics
+│       ├── logger.py         ← action log file + GUI status bar updates
 │       ├── motif_analyzer.py ← motif search (predefined and custom)
 │       ├── orf_analyzer.py   ← ORF identification (3 forward frames)
 │       ├── plots.py          ← matplotlib visualisations
 │       ├── stats.py          ← statistical tests and correlation
-│       └── report.py         ← Markdown report generation
+│       └── report.py         ← Markdown and PDF report generation
 ├── source/                   ← input files (FASTA, CSV, TSV)
 ├── results/
 │   ├── tables/               ← CSV output files from HUBA
@@ -77,16 +78,19 @@ python run.py
 
 Opens the launcher window with two options:
 - **Run HUBA Pipeline** — prepare and clean input data
-- **Open BioSeq Explorer** — open the analytical GUI
+- **Open BioSeq Explorer** — open the analytical GUI, centered on
+  whichever monitor the launcher window is on
 
 ### 2. Download sequences from NCBI
 
 ```bash
-python fetch_ncbi.py
+python fetch_ncbi.py --genes BRCA1 BRCA2 TP53 CHEK2 PALB2
 ```
 
-Downloads FASTA sequences for BRCA1, BRCA2, TP53, CHEK2 and PALB2
-into `source/`. Skips files that already exist.
+Downloads FASTA sequences for the genes listed after `--genes`
+into `source/`. Skips files that already exist (use `--force` to
+re-download). `--genes` is required — see `python fetch_ncbi.py --list`
+to check what's already downloaded.
 
 ### 3. (Optional) Generate CSV and TSV test files
 
@@ -162,7 +166,7 @@ Column names are automatically mapped to canonical names:
 | `results/tables/clean_dataset_{A\|B\|C}.csv` | Accepted sequences per variant |
 | `results/tables/after_filter_{A\|B\|C}.csv` | Stats after filtering |
 | `results/tables/rejected_{A\|B\|C}.csv` | Rejected sequences with reasons |
-| `results/tables/param_compare.csv` | Variant comparison table |
+| `results/tables/param_compare.csv` | Variant comparison table (only when more than one variant is run, e.g. `--all`) |
 | `results/plots/input_lengths.png` | Sequence length distribution |
 | `results/plots/param_compare.png` | Accepted vs rejected per variant |
 | `results/plots/gc_boxplot.png` | GC% distribution per source file |
@@ -184,7 +188,30 @@ A GUI analytical tool built with CustomTkinter. Launch via `python run.py`.
 | **Motif Analysis** | Search predefined or custom motifs, per-gene comparison |
 | **ORF Analysis** | Identify open reading frames, per-gene summary, plots |
 | **Statistics** | t-test, ANOVA, Mann-Whitney U, correlation matrix |
-| **Report** | Generate Markdown report with all plots and statistics |
+| **Report** | Generate Markdown or PDF report, with selectable sections and plots |
+
+### Dataset loading and validation
+
+The Home tab's **Load Dataset** button expects a `clean_dataset_*.csv`
+file produced by HUBA, with `id`, `sequence` and `_source` columns. Three
+checks run when a file is selected, each escalating in severity:
+
+1. **File type** — a file that isn't a CSV at all (e.g. a leftover
+   `.fasta` or `.tsv`) is rejected immediately; this can't be a usable
+   dataset regardless of its name.
+2. **File name** — a CSV that doesn't follow the `clean_dataset_*.csv`
+   naming pattern triggers a warning, not a rejection. It may still be
+   a valid hand-built or renamed file, so the user can choose to
+   continue and let the next check decide.
+3. **Required columns and content** — the file is read and checked for
+   the three required columns, and the `sequence` column is checked for
+   non-text values (e.g. blank CSV cells). Either failure rejects the
+   file with a message naming the specific problem (missing columns, or
+   which rows have an unusable `sequence` value).
+
+A dataset that loads successfully but fails analysis later (for example,
+due to data the column-presence check can't catch) shows the underlying
+error inline in the affected tab rather than silently failing.
 
 ### ORF analysis — scope note
 
@@ -195,8 +222,9 @@ read in one direction. Reverse strand scanning (`-1, -2, -3`) is
 relevant for genomic DNA but would produce misleading results for mRNA.
 
 The algorithm was independently verified against Biopython — all 23
-test sequences produced identical ORF counts and positions
-(see `tests/verify_orfs.py`).
+test sequences produced matching ORF counts (see `tests/verify_orfs.py`).
+The script also prints the top ORF's frame, start position and length
+from both implementations side by side for manual spot-checking.
 
 ---
 
@@ -237,9 +265,8 @@ The following extensions are planned or possible:
 
 ### Input/output
 - **XLSX support** — load Excel files as an additional input format
-- **PDF report export** — export the analysis report as PDF
-  in addition to Markdown
 - **Report customisation** — user-selectable sections and plot styles
+  beyond what the PDF section picker already covers
 
 ### Infrastructure
 - **Database backend** — store cleaned datasets in SQLite for
@@ -265,6 +292,7 @@ pandas>=2.0
 numpy>=1.26
 scipy>=1.11
 customtkinter>=5.2.2
+reportlab>=4.0
 ```
 
 ---
