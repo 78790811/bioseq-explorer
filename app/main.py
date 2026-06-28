@@ -2532,6 +2532,7 @@ class StatisticsTab(ctk.CTkFrame):
             def _result_key(r):
                 return (r.get("test"), r.get("metric"),
                         r.get("group_a"), r.get("group_b"))
+
             existing = next(
                 (i for i, r in enumerate(self._last_results)
                  if _result_key(r) == _result_key(result)), None
@@ -2541,24 +2542,24 @@ class StatisticsTab(ctk.CTkFrame):
             else:
                 self._last_results.append(result)
 
-                # Show interpretation
-                if "error" in result:
-                    self.result_label.configure(
-                        text=result["error"], text_color="red"
-                    )
-                    logger.log_action(
-                        f"Statistical test failed: {result['error']}", level="error"
-                    )
-                else:
-                    color = "#2CA02C" if result.get("significant") else "#E05A2B"
-                    self.result_label.configure(
-                        text=result.get("note", ""), text_color=color
-                    )
-                    sig_label = "significant" if result.get("significant") else "not significant"
-                    logger.log_action(
-                        f"{result.get('test', 'Test')} on {result.get('metric', '')} "
-                        f"completed: {sig_label} (p={result.get('p_value', 'n/a')})"
-                    )
+        # Show interpretation
+        if "error" in result:
+            self.result_label.configure(
+                text=result["error"], text_color="red"
+            )
+            logger.log_action(
+                f"Statistical test failed: {result['error']}", level="error"
+            )
+        else:
+            color = "#2CA02C" if result.get("significant") else "#E05A2B"
+            self.result_label.configure(
+                text=result.get("note", ""), text_color=color
+            )
+            sig_label = "significant" if result.get("significant") else "not significant"
+            logger.log_action(
+                f"{result.get('test', 'Test')} on {result.get('metric', '')} "
+                f"completed: {sig_label} (p={result.get('p_value', 'n/a')})"
+            )
 
         # Populate results Treeview
         result_df = self._stats.result_to_dataframe(result)
@@ -3103,7 +3104,7 @@ class ReportTab(ctk.CTkFrame):
         tk.Label(
             dialog,
             text="Greyed out sections have no data available.",
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 10),
             fg="gray",
         ).pack(anchor="w", padx=20, pady=(0, 8))
 
