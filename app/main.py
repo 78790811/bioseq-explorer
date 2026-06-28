@@ -892,6 +892,16 @@ class HomeTab(ctk.CTkFrame):
         Returns:
             None
         """
+        # Hide the widget while its column structure is being rebuilt.
+        # self.tree["columns"] = columns (below) discards the previous
+        # column set immediately, but the new headings/widths aren't in
+        # place until the loop after it finishes — without pack_forget(),
+        # Tk can paint that in-between state for a frame, which is the
+        # brief "flash of garbled column letters" seen when loading a
+        # new dataset. Re-packing afterward restores it in one repaint
+        # once the table is actually ready to show.
+        self.tree.pack_forget()
+
         # Clear existing data
         self.tree.delete(*self.tree.get_children())
 
@@ -929,6 +939,9 @@ class HomeTab(ctk.CTkFrame):
                 "", "end",
                 values=["... (showing first 500 rows)"] + [""] * (len(columns) - 1),
             )
+
+        # Show the fully-configured table in one go.
+        self.tree.pack(fill="both", expand=True)
 
     def _sort_column(self, col: str, reverse: bool) -> None:
         """Sort Treeview rows by the clicked column header.
@@ -3778,10 +3791,16 @@ class BioSeqExplorerApp(ctk.CTk):
 
         self.update_idletasks()
         if launch_position is not None:
-            # Open at the same position as the launcher window, so the
-            # app appears on the same monitor instead of always centering
-            # on the primary display.
-            x, y = launch_position
+            # launch_position is the *center* of the launcher window
+            # (run.py computes this, not its top-left corner). Centering
+            # this much larger window on that same point keeps it on the
+            # launcher's monitor — anchoring by top-left corner instead
+            # would offset the window down and to the right of the
+            # launcher, and on a multi-monitor setup could split it
+            # across two screens.
+            center_x, center_y = launch_position
+            x = center_x - config.WINDOW_WIDTH // 2
+            y = center_y - config.WINDOW_HEIGHT // 2
         else:
             # No launcher position provided (e.g. running app/main.py
             # directly) — fall back to centering on the primary screen.
@@ -3926,10 +3945,11 @@ class BioSeqExplorerApp(ctk.CTk):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Optional --at X Y arguments let the launcher position this window
-    # at its own screen location, so BioSeq Explorer opens on the same
-    # monitor as the launcher instead of always centering on the
-    # primary display.
+    # Optional --at X Y arguments let the launcher tell this window
+    # where to center itself. The values are the *center point* of the
+    # launcher window (see run.py's _open_explorer), not its top-left
+    # corner — that distinction is what keeps this much larger window
+    # on the same monitor as the launcher instead of spilling off it.
     launch_position = None
     if "--at" in sys.argv:
         try:
