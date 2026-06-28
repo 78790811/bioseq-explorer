@@ -534,18 +534,21 @@ def generate_pdf(
 
     # ── 1. QC Summary Statistics ─────────────────────────────────────────────
     if summary_df is not None:
-     story.append(Paragraph(next_section("Quality Control — Summary Statistics"), h1_style))
-    qc_data = [["Metric", "Mean", "Median", "Std", "Min", "Max", "Q25", "Q75"]]
-    for metric_name, row in summary_df.iterrows():
-        fmt = (lambda v: f"{v*100:.2f}%") if "content" in metric_name.lower()             else (lambda v: f"{v:.1f}")
-        qc_data.append([metric_name,
-            fmt(row["Mean"]), fmt(row["Median"]), fmt(row["Std"]),
-            fmt(row["Min"]),  fmt(row["Max"]),
-            fmt(row["Q25"]),  fmt(row["Q75"])])
-    t = Table(qc_data, colWidths=[4.5*cm]+[1.9*cm]*7)
-    t.setStyle(make_table_style())
-    story.append(t)
-    story.append(Spacer(1, 0.5*cm))
+        qc_data = [["Metric", "Mean", "Median", "Std", "Min", "Max", "Q25", "Q75"]]
+        for metric_name, row in summary_df.iterrows():
+            fmt = (lambda v: f"{v*100:.2f}%") if "content" in metric_name.lower() \
+                else (lambda v: f"{v:.1f}")
+            qc_data.append([metric_name,
+                fmt(row["Mean"]), fmt(row["Median"]), fmt(row["Std"]),
+                fmt(row["Min"]),  fmt(row["Max"]),
+                fmt(row["Q25"]),  fmt(row["Q75"])])
+        t = Table(qc_data, colWidths=[4.5*cm]+[1.9*cm]*7)
+        t.setStyle(make_table_style())
+        story.append(KeepTogether([
+            Paragraph(next_section("Quality Control — Summary Statistics"), h1_style),
+            t,
+            Spacer(1, 0.5*cm),
+        ]))
 
     # ── 2. Per-Gene Statistics ────────────────────────────────────────────────
     if gene_df is not None and not gene_df.empty:
@@ -669,10 +672,9 @@ def generate_pdf(
 
     # ── 5. Visualizations ─────────────────────────────────────────────────────
     if include_plots:
-     story.append(PageBreak())
-     story.append(Paragraph(next_section("Visualizations"), h1_style))
+        story.append(PageBreak())
+        story.append(Paragraph(next_section("Visualizations"), h1_style))
 
-    if include_plots:
         sel = plot_selection or {}
         plot_specs = [
             ("plot_gc_dist",   "GC Content Distribution",
