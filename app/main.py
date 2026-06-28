@@ -1161,11 +1161,11 @@ class QualityControlTab(ctk.CTkFrame):
             row.pack(fill="x", pady=3)
             tk.Label(
                 row, text=f"{labels.get(key, key)}:",
-                font=("Segoe UI", 10, "bold"),
+                font=("Segoe UI", 11, "bold"),
                 width=14, anchor="w",
             ).pack(side="left")
             tk.Label(
-                row, text=str(value), font=("Segoe UI", 10),
+                row, text=str(value), font=("Segoe UI", 11),
                 anchor="w",
             ).pack(side="left")
 
@@ -1180,7 +1180,7 @@ class QualityControlTab(ctk.CTkFrame):
 
         copy_btn = tk.Button(
             btn_frame, text="Copy ID", width=14,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 11, "bold"),
             bg="#1F6AA5", fg="white",
             command=copy_id,
         )
@@ -1188,7 +1188,7 @@ class QualityControlTab(ctk.CTkFrame):
 
         tk.Button(
             btn_frame, text="Close", width=12,
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 11),
             command=popup.destroy,
         ).pack(side="right")
 
