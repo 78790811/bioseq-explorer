@@ -222,7 +222,8 @@ def _section_plots(plot_filenames: list[str]) -> str:
     }
 
     for filename in plot_filenames:
-        title = plot_titles.get(filename, filename.replace(".png", "").replace("_", " ").title())
+        fallback_title = filename.replace(".png", "").replace("_", " ").title()
+        title = plot_titles.get(filename, fallback_title)
         lines.append(f"### {title}")
         lines.append("")
         lines.append(f"![{title}]({PLOTS_SUBDIR}/{filename})")
@@ -617,7 +618,13 @@ def generate_pdf(
         from collections import defaultdict
         gene_orfs = defaultdict(lambda: {"total": 0, "longest": 0, "count": 0})
         for _, row in orf_df.iterrows():
-            src = str(row["_source"]).replace("_sequences.fasta","")                 .replace(".fasta","").replace(".csv","").replace(".tsv","")
+            src = (
+                str(row["_source"])
+                .replace("_sequences.fasta", "")
+                .replace(".fasta", "")
+                .replace(".csv", "")
+                .replace(".tsv", "")
+            )
             gene_orfs[src]["total"] += int(row["n_orfs"])
             gene_orfs[src]["longest"] = max(
                 gene_orfs[src]["longest"], int(row["longest_orf"]))
@@ -746,7 +753,12 @@ def generate_pdf(
             elif stripped.startswith("# "):
                 story.append(Paragraph(stripped[2:], h1_style))
             else:
-                safe = stripped.replace("&","&amp;").replace("<","&lt;")                               .replace(">","&gt;")
+                safe = (
+                    stripped
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                )
                 story.append(Paragraph(safe, mono_style))
 
     doc.build(story)

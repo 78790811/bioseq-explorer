@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-import re
-
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -40,7 +38,10 @@ def validate_motif(motif: str) -> tuple[bool, str]:
     cleaned = motif.strip().upper()
     invalid = set(cleaned) - VALID_MOTIF_CHARS
     if invalid:
-        return False, f"Invalid characters in motif: {', '.join(sorted(invalid))}. Only A, C, G, T, N are allowed."
+        return False, (
+            f"Invalid characters in motif: {', '.join(sorted(invalid))}. "
+            f"Only A, C, G, T, N are allowed."
+        )
     if len(cleaned) < 2:
         return False, "Motif must be at least 2 characters long."
     return True, ""
@@ -171,7 +172,11 @@ def summarize_by_gene(
         })
 
     result = pd.DataFrame(rows)
-    return result.sort_values("Total occurrences", ascending=False).reset_index(drop=True)
+    return (
+        result
+        .sort_values("Total occurrences", ascending=False)
+        .reset_index(drop=True)
+    )
 
 
 # ---------------------------------------------------------------------------
