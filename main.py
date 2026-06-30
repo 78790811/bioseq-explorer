@@ -194,7 +194,9 @@ def make_plots(
 
     # Assign a colour per source file
     unique_sources = list(dict.fromkeys(sorted_sources))
-    color_map_bar = matplotlib.colormaps.get_cmap("tab10").resampled(len(unique_sources))
+    color_map_bar = matplotlib.colormaps.get_cmap("tab10").resampled(
+        len(unique_sources)
+    )
     source_to_color = {
         src: color_map_bar(i) for i, src in enumerate(unique_sources)
     }

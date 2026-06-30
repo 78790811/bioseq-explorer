@@ -197,22 +197,22 @@ class LauncherWindow(ctk.CTk):
             " & echo."
             " & echo Available commands (run from this directory):"
             " & echo."
-            " & echo   python main.py --dry-run                       Preview files, no filtering"
-            " & echo   python main.py --variant A                     Lenient  (min_len=10, max_n=50%%)"
-            " & echo   python main.py --variant B                     Standard (min_len=20, max_n=20%%)"
-            " & echo   python main.py --variant C                     Strict   (min_len=50, max_n=5%%)"
-            " & echo   python main.py --all                           Run all variants A, B, C"
-            " & echo   python main.py --select                        Choose files interactively"
-            " & echo   python main.py --select --variant C            Select files + strict filter"
-            " & echo   python main.py --delete                        Delete files from source"
+            " & echo   python main.py --dry-run                       Preview files, no filtering"  # noqa: E501
+            " & echo   python main.py --variant A                     Lenient  (min_len=10, max_n=50%%)"  # noqa: E501
+            " & echo   python main.py --variant B                     Standard (min_len=20, max_n=20%%)"  # noqa: E501
+            " & echo   python main.py --variant C                     Strict   (min_len=50, max_n=5%%)"  # noqa: E501
+            " & echo   python main.py --all                           Run all variants A, B, C"  # noqa: E501
+            " & echo   python main.py --select                        Choose files interactively"  # noqa: E501
+            " & echo   python main.py --select --variant C            Select files + strict filter"  # noqa: E501
+            " & echo   python main.py --delete                        Delete files from source"  # noqa: E501
             " & echo."
-            " & echo   python fetch_ncbi.py --list                    List downloaded FASTA files"
-            " & echo   python fetch_ncbi.py --genes BRCA1 TP53        Download specific genes"
-            " & echo   python fetch_ncbi.py --genes EGFR --max 5      Max 5 sequences per gene"
-            " & echo   python fetch_ncbi.py --genes BRCA1 --force     Re-download existing file"
-            " & echo   python generate_test_data.py                   Generate test CSV/TSV files"
+            " & echo   python fetch_ncbi.py --list                    List downloaded FASTA files"  # noqa: E501
+            " & echo   python fetch_ncbi.py --genes BRCA1 TP53        Download specific genes"  # noqa: E501
+            " & echo   python fetch_ncbi.py --genes EGFR --max 5      Max 5 sequences per gene"  # noqa: E501
+            " & echo   python fetch_ncbi.py --genes BRCA1 --force     Re-download existing file"  # noqa: E501
+            " & echo   python generate_test_data.py                   Generate test CSV/TSV files"  # noqa: E501
             " & echo."
-            " & echo   dir source\\*_sequences.fasta                   List downloaded sequence files"
+            " & echo   dir source\\*_sequences.fasta                   List downloaded sequence files"  # noqa: E501
             " & echo."
             " & echo Type a command above and press Enter."
             " & echo ============================================================"
