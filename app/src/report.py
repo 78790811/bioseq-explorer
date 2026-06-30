@@ -369,6 +369,7 @@ def generate_pdf(
     corr_fig=None,
     orf_df=None,
     include_plots: bool = True,
+    include_cover: bool = True,
     plot_selection: dict = None,
     motif_results: list = None,
 ):
@@ -388,6 +389,8 @@ def generate_pdf(
         huba_report_text:   Full text of HUBA REPORT.md (optional).
         stat_results:       List of statistical test result dicts.
         corr_fig:           Correlation heatmap Figure (optional).
+        include_cover:      Whether to include the cover page (dataset
+                             info table) section. Defaults to True.
 
     Returns:
         Path to the generated PDF file.
@@ -506,32 +509,33 @@ def generate_pdf(
     story.append(Paragraph("Analysis Report", styles["Heading2"]))
     story.append(Spacer(1, 0.5*cm))
 
-    cover_data = [
-        ["Generated", now],
-        ["Dataset", dataset_name],
-        ["Filter variant", variant],
-        ["HUBA report", "Loaded" if huba_report_loaded else "Not available"],
-        ["Total sequences", str(len(qc_df))],
-        ["Gene sources",
-         str(qc_df["_source"].nunique()) if "_source" in qc_df.columns else "n/a"],
-        ["Flagged sequences",
-         str(int((qc_df["qc_flag"] != "OK").sum()))
-         if "qc_flag" in qc_df.columns else "n/a"],
-    ]
-    cover_table = Table(cover_data, colWidths=[5*cm, 11*cm])
-    cover_table.setStyle(TableStyle([
-        ("FONTNAME",   (0,0), (0,-1), "Helvetica-Bold"),
-        ("FONTSIZE",   (0,0), (-1,-1), 10),
-        ("TEXTCOLOR",  (0,0), (0,-1), colors.HexColor("#1F6AA5")),
-        ("ROWBACKGROUNDS", (0,0), (-1,-1),
-         [colors.white, colors.HexColor("#F3F4F6")]),
-        ("TOPPADDING",    (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-        ("LEFTPADDING",   (0,0), (-1,-1), 6),
-        ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
-    ]))
-    story.append(cover_table)
-    story.append(Spacer(1, 0.5*cm))
+    if include_cover:
+        cover_data = [
+            ["Generated", now],
+            ["Dataset", dataset_name],
+            ["Filter variant", variant],
+            ["HUBA report", "Loaded" if huba_report_loaded else "Not available"],
+            ["Total sequences", str(len(qc_df))],
+            ["Gene sources",
+             str(qc_df["_source"].nunique()) if "_source" in qc_df.columns else "n/a"],
+            ["Flagged sequences",
+             str(int((qc_df["qc_flag"] != "OK").sum()))
+             if "qc_flag" in qc_df.columns else "n/a"],
+        ]
+        cover_table = Table(cover_data, colWidths=[5*cm, 11*cm])
+        cover_table.setStyle(TableStyle([
+            ("FONTNAME",   (0,0), (0,-1), "Helvetica-Bold"),
+            ("FONTSIZE",   (0,0), (-1,-1), 10),
+            ("TEXTCOLOR",  (0,0), (0,-1), colors.HexColor("#1F6AA5")),
+            ("ROWBACKGROUNDS", (0,0), (-1,-1),
+             [colors.white, colors.HexColor("#F3F4F6")]),
+            ("TOPPADDING",    (0,0), (-1,-1), 5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("LINEBELOW", (0,-1), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+        ]))
+        story.append(cover_table)
+        story.append(Spacer(1, 0.5*cm))
 
     # ── 1. QC Summary Statistics ─────────────────────────────────────────────
     if summary_df is not None:

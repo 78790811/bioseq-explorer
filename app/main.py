@@ -3388,6 +3388,7 @@ class ReportTab(ctk.CTkFrame):
                     selections.get("motif_indices", [])
                     if i < len(motif_results)],
                 include_plots=selections.get("plots", True),
+                include_cover=selections.get("cover", True),
                 plot_selection=selections.get("plot_vars", {}),
             )
         except Exception as e:
@@ -3602,8 +3603,9 @@ class ReportTab(ctk.CTkFrame):
         vars_["stat_section"].trace_add("write", toggle_stats)
 
         separator()
-        vars_["orf"]         = section_header("ORF Analysis results",
-                                               available=has_orf)
+        vars_["orf"] = section_header("ORF Analysis results", available=has_orf)
+        if not has_orf:
+            sub_checkbox("No ORF analysis run yet", available=False)
         separator()
 
         # Motif Analysis with individual motif selection
