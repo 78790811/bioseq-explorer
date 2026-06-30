@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 
 import customtkinter as ctk
 
@@ -876,7 +876,10 @@ class HomeTab(ctk.CTkFrame):
         # Pass dataset metadata to ReportTab
         huba_report_path = self.dataset_path.parent.parent / "REPORT.md"
         huba_loaded = huba_report_path.exists()
-        huba_text = huba_report_path.read_text(encoding="utf-8")             if huba_loaded else ""
+        huba_text = (
+            huba_report_path.read_text(encoding="utf-8")
+            if huba_loaded else ""
+        )
         app.report_tab.set_dataset_info(
             dataset_path=str(self.dataset_path),
             huba_loaded=huba_loaded,
@@ -2982,7 +2985,10 @@ class StatisticsTab(ctk.CTkFrame):
             self.result_label.configure(
                 text=result.get("note", ""), text_color=color
             )
-            sig_label = "significant" if result.get("significant") else "not significant"
+            sig_label = (
+                "significant" if result.get("significant")
+                else "not significant"
+            )
             logger.log_action(
                 f"{result.get('test', 'Test')} on {result.get('metric', '')} "
                 f"completed: {sig_label} (p={result.get('p_value', 'n/a')})"
@@ -3331,11 +3337,17 @@ class ReportTab(ctk.CTkFrame):
         stats_tab = getattr(app, "stats_tab", None)
         orf_tab   = getattr(app, "orf_tab", None)
 
-        stat_results = getattr(stats_tab, "_last_results", [])             if stats_tab else []
-        corr_fig = getattr(stats_tab, "_corr_fig", None)             if stats_tab else None
-        orf_df = getattr(orf_tab, "orf_df", None)             if orf_tab else None
+        stat_results = (
+            getattr(stats_tab, "_last_results", []) if stats_tab else []
+        )
+        corr_fig = (
+            getattr(stats_tab, "_corr_fig", None) if stats_tab else None
+        )
+        orf_df = getattr(orf_tab, "orf_df", None) if orf_tab else None
         motif_tab = getattr(app, "motif_tab", None)
-        motif_results = getattr(motif_tab, "_motif_results", [])             if motif_tab else []
+        motif_results = (
+            getattr(motif_tab, "_motif_results", []) if motif_tab else []
+        )
 
         # Show section selector dialog
         selections = self._show_pdf_section_dialog(
@@ -3443,7 +3455,6 @@ class ReportTab(ctk.CTkFrame):
         Returns:
             Dict of section keys → bool/list, or None if user cancelled.
         """
-        import tkinter.font as tkfont
         stat_results = stat_results or []
         motif_results = motif_results or []
         result = {"cancelled": True}
@@ -3936,8 +3947,6 @@ class BioSeqExplorerApp(ctk.CTk):
         # Share correlation figure and stat results with ReportTab
         self.report_tab._corr_fig = getattr(self.stats_tab, "_corr_fig", None)
         self.report_tab._stat_results = getattr(self.stats_tab, "_last_results", [])
-
-
 
 
 # ---------------------------------------------------------------------------
