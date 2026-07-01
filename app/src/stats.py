@@ -259,7 +259,15 @@ def compute_correlation_matrix(
     metrics_df = qc_df[["gc_content", "n_content", "length"]].copy()
     metrics_df.columns = ["GC content", "N content", "Length (bp)"]
 
-    return metrics_df.corr(method=method).round(4)
+    corr = metrics_df.corr(method=method).round(4)
+
+    # Replace NaN correlations (caused by zero-variance metrics, e.g. all
+    # N content = 0.0 for every sequence) with 0.0 — the correlation is
+    # mathematically undefined in that case, but displaying 'nan' in the
+    # heatmap cells is confusing. Zero is the safest neutral substitute.
+    corr = corr.fillna(0.0)
+
+    return corr
 
 
 # ---------------------------------------------------------------------------
