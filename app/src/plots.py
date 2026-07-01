@@ -439,6 +439,20 @@ def plot_motif_by_gene(
     )
     ax.invert_yaxis()  # Top gene = most occurrences
 
+    # When all counts are zero matplotlib auto-scales the X axis to roughly
+    # -0.04 .. 0.04 — looks like data is present when it isn't. Force a
+    # clean 0-1 range and add a plain "nothing found" message instead.
+    if counts.sum() == 0:
+        ax.set_xlim(0, 1)
+        ax.text(
+            0.5, 0.5,
+            "No occurrences found",
+            ha="center", va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+            color="gray",
+        )
+
     fig.tight_layout()
     return fig
 
