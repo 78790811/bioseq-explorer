@@ -272,6 +272,26 @@ def _section_stat_results(stat_results: list[dict]) -> str:
 # Main report generation function
 # ---------------------------------------------------------------------------
 
+def _cleanup_old_pdfs(output_dir: Path, keep: int = 10) -> None:
+    """Delete oldest PDF reports, keeping only the most recent `keep` files.
+
+    Args:
+        output_dir: Directory where PDF reports are saved.
+        keep:       Number of most recent files to retain (default 10).
+
+    Returns:
+        None
+    """
+    pdfs = sorted(
+        output_dir.glob("bioseq_report_*.pdf"),
+        key=lambda p: p.stat().st_mtime,
+    )
+    for old_pdf in pdfs[:-keep] if len(pdfs) > keep else []:
+        try:
+            old_pdf.unlink()
+        except OSError:
+            pass  # Never let cleanup crash the app
+
 def generate_report(
     qc_df: pd.DataFrame,
     summary_df: pd.DataFrame,
@@ -406,6 +426,9 @@ def generate_pdf(
     )
 
     _ensure_output_dirs(output_dir)
+    # Keep only the 10 most recent PDF reports — delete older ones
+    # automatically so app_output/ doesn't grow without limit.
+    _cleanup_old_pdfs(output_dir, keep=10)
     # Timestamped filename — avoids "Permission denied" errors on Windows
     # when a previously generated PDF with the same name is still open
     # in a viewer (Adobe, browser, etc.), which locks the file for writing.
