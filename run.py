@@ -205,6 +205,8 @@ class LauncherWindow(ctk.CTk):
             " & echo   python main.py --select                        Choose files interactively"  # noqa: E501
             " & echo   python main.py --select --variant C            Select files + strict filter"  # noqa: E501
             " & echo   python main.py --delete                        Delete files from source"  # noqa: E501
+            " & echo   python main.py --skip-test                     Skip test_ files from source/"  # noqa: E501
+            " & echo   python main.py --variant B --skip-test         Standard filter, real data only"  # noqa: E501
             " & echo."
             " & echo   python fetch_ncbi.py --list                    List downloaded FASTA files"  # noqa: E501
             " & echo   python fetch_ncbi.py --genes BRCA1 TP53        Download specific genes"  # noqa: E501
@@ -498,6 +500,8 @@ class HubaRunnerWindow(ctk.CTkToplevel):
                  "Select files + apply strict filtering"),
                 ("--delete",
                  "Interactively delete files from source/"),
+                ("--skip-test",
+                 "Skip test_ files, process real data only"),
             ]
 
             ctk.CTkLabel(
