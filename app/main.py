@@ -928,6 +928,20 @@ class HomeTab(ctk.CTkFrame):
             )
             self.tree.column(col, width=col_width, minwidth=60)
 
+        # Stretch columns to fill the available container width.
+        # After setting initial widths, check if the total is narrower
+        # than the tree widget and distribute the leftover space evenly.
+        self.tree.update_idletasks()
+        total_width = sum(
+            self.tree.column(col, "width") for col in columns
+        )
+        available = self.tree.winfo_width()
+        if available > total_width and columns:
+            extra = (available - total_width) // len(columns)
+            for col in columns:
+                new_w = self.tree.column(col, "width") + extra
+                self.tree.column(col, width=new_w)
+
         # Insert rows (limit to 500 for performance)
         display_df = self.df.head(500)
         for i, (_, row) in enumerate(display_df.iterrows()):
