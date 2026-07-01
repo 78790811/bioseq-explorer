@@ -462,6 +462,11 @@ def main() -> None:
         action="store_true",
         help="Interactively select and delete files from source/",
     )
+    parser.add_argument(
+        "--skip-test",
+        action="store_true",
+        help="Skip test files (prefixed with 'test_') from source/",
+    )
     args = parser.parse_args()
 
     # Print help if no argument was given
@@ -521,10 +526,14 @@ def main() -> None:
         records, file_profile = load_all_files(
             config.SOURCE_DIR,
             selected_files=selected_files,
+            skip_test=args.skip_test,
         )
     else:
         print(f"\nLoading files from: {config.SOURCE_DIR}")
-        records, file_profile = load_all_files(config.SOURCE_DIR)
+        records, file_profile = load_all_files(
+            config.SOURCE_DIR,
+            skip_test=args.skip_test,
+        )
 
     print(f"  Total records loaded: {len(records)}")
 

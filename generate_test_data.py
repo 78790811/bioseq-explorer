@@ -86,7 +86,7 @@ def generate_lab_a_csv(output_dir: Path) -> None:
     Column names: gene, organism, sequence
     Represents a clean, well-structured source.
     """
-    path = output_dir / "lab_a_sequences.csv"
+    path = output_dir / "test_lab_a_sequences.csv"
     rows = [
         {
             "gene": s["gene"],
@@ -108,7 +108,7 @@ def generate_lab_b_csv(output_dir: Path) -> None:
     Column names: GeneSymbol, Species, DNASequence
     Represents a source with different column naming convention.
     """
-    path = output_dir / "lab_b_sequences.csv"
+    path = output_dir / "test_lab_b_sequences.csv"
     rows = [
         {
             "GeneSymbol": s["gene"],
@@ -132,7 +132,7 @@ def generate_lab_c_csv(output_dir: Path) -> None:
     Column names: gene_id, seq, notes (with missing values)
     Represents a messy source with non-standard names and missing data.
     """
-    path = output_dir / "lab_c_sequences.csv"
+    path = output_dir / "test_lab_c_sequences.csv"
     rows = [
         {
             "gene_id": s["gene"],
@@ -158,7 +158,7 @@ def generate_institute_a_tsv(output_dir: Path) -> None:
     Column names: accession, dna_sequence, species
     Tab-separated format as exported from a genomics database.
     """
-    path = output_dir / "institute_a_sequences.tsv"
+    path = output_dir / "test_institute_a_sequences.tsv"
     rows = [
         {
             "accession": f"{s['gene']}_001",
@@ -184,7 +184,7 @@ def generate_institute_b_tsv(output_dir: Path) -> None:
     Column names: ID, SEQUENCE, ORGANISM, GC_PCT
     Tab-separated with additional metadata columns.
     """
-    path = output_dir / "institute_b_sequences.tsv"
+    path = output_dir / "test_institute_b_sequences.tsv"
     rows = [
         {
             "ID": f"{s['gene']}_ref",
@@ -211,7 +211,7 @@ def generate_institute_c_tsv(output_dir: Path) -> None:
     Column names: gene_name, nucleotides (minimal columns)
     Tab-separated with only essential fields.
     """
-    path = output_dir / "institute_c_sequences.tsv"
+    path = output_dir / "test_institute_c_sequences.tsv"
     rows = [
         {
             "gene_name": s["gene"],

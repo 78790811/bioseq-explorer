@@ -147,6 +147,7 @@ def read_csv_tsv(path: Path) -> list[dict]:
 def load_all_files(
     source_dir: Path,
     selected_files: list[Path] | None = None,
+    skip_test: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Load all supported files from the source directory.
 
@@ -174,6 +175,7 @@ def load_all_files(
         all_files = sorted([
             p for p in source_dir.iterdir()
             if p.suffix.lower() in supported_extensions
+               and not (skip_test and p.name.startswith("test_"))
         ])
 
     for path in all_files:
