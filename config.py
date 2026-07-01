@@ -1,5 +1,9 @@
 # config.py
-# Central configuration file for BioSeq Explorer.
+# config.py  ← HUBA pipeline configuration (project root)
+# ⚠ There are two config files in this project:
+#   - config.py          (this file) — used by HUBA (main.py, pipeline.py etc.)
+#   - app/config.py                  — used by BioSeq Explorer GUI
+# Central configuration for the HUBA data preparation pipeline.
 # All paths, parameters and analysis variants are defined here.
 
 from pathlib import Path
