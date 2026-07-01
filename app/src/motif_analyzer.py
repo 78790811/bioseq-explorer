@@ -112,6 +112,8 @@ def search_motif(
     rows = []
 
     for _, record in df.iterrows():
+        # str() guards against non-string values (e.g. NaN from blank
+        # CSV cells) — intentional, mirrors analyzer.py's approach.
         positions = find_motif_in_sequence(str(record["sequence"]), motif)
         rows.append({
             "id":        record["id"],

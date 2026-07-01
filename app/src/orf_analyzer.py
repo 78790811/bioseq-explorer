@@ -124,6 +124,8 @@ def run_orf_analysis(
 
     rows = []
     for _, record in df.iterrows():
+        # str() guards against non-string values (e.g. NaN from blank
+        # CSV cells) — intentional, mirrors analyzer.py's approach.
         orfs = find_orfs(str(record["sequence"]), min_length=min_length)
         n = len(orfs)
         longest = max((o["length"] for o in orfs), default=0)
